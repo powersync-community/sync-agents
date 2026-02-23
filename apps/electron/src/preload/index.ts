@@ -166,6 +166,18 @@ const api: ElectronAPI = {
   // Credential health check (startup validation)
   getCredentialHealth: () => ipcRenderer.invoke(IPC_CHANNELS.CREDENTIAL_HEALTH_CHECK),
 
+  // Cloud auth/sync (experimental)
+  supabaseSignUp: (email: string, password: string) => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_SIGN_UP, email, password),
+  supabaseSignIn: (email: string, password: string) => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_SIGN_IN, email, password),
+  supabaseSignOut: () => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_SIGN_OUT),
+  supabaseGetUser: () => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_GET_USER),
+  cloudWorkspaceList: () => ipcRenderer.invoke(IPC_CHANNELS.CLOUD_WORKSPACE_LIST),
+  cloudWorkspaceCreate: (name: string) => ipcRenderer.invoke(IPC_CHANNELS.CLOUD_WORKSPACE_CREATE, name),
+  cloudWorkspaceLinkLocal: (localWorkspaceId: string, cloudWorkspaceId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLOUD_WORKSPACE_LINK_LOCAL, localWorkspaceId, cloudWorkspaceId),
+  syncGetStatus: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_GET_STATUS),
+  syncReconnect: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_RECONNECT),
+
   // Onboarding
   getAuthState: () => ipcRenderer.invoke(IPC_CHANNELS.ONBOARDING_GET_AUTH_STATE).then(r => r.authState),
   getSetupNeeds: () => ipcRenderer.invoke(IPC_CHANNELS.ONBOARDING_GET_AUTH_STATE).then(r => r.setupNeeds),

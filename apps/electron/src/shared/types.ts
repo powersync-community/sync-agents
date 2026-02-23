@@ -73,6 +73,40 @@ export interface LlmConnectionSetup {
   models?: string[] | null  // Optional model list for compat providers
 }
 
+export interface SupabaseAuthState {
+  configured: boolean
+  authenticated: boolean
+  verified: boolean
+  user: {
+    id: string
+    email?: string
+    emailConfirmedAt?: string
+  } | null
+}
+
+export interface CloudWorkspace {
+  id: string
+  name: string
+  createdAt: string
+  role?: string
+}
+
+export type StorageMode = 'local_only' | 'cloud_canonical'
+
+export interface WorkspaceLinkState {
+  localWorkspaceId: string
+  cloudWorkspaceId?: string
+  storageMode: StorageMode
+}
+
+export interface SyncStatus {
+  configured: boolean
+  connected: boolean
+  syncing: boolean
+  lastSyncedAt?: number
+  error?: string
+}
+
 
 /**
  * File/directory entry in a skill folder
@@ -669,6 +703,17 @@ export const IPC_CHANNELS = {
   // Credential health check (startup validation)
   CREDENTIAL_HEALTH_CHECK: 'credentials:healthCheck',
 
+  // Cloud auth/sync (experimental)
+  SUPABASE_SIGN_UP: 'supabase:signUp',
+  SUPABASE_SIGN_IN: 'supabase:signIn',
+  SUPABASE_SIGN_OUT: 'supabase:signOut',
+  SUPABASE_GET_USER: 'supabase:getUser',
+  CLOUD_WORKSPACE_LIST: 'cloudWorkspace:list',
+  CLOUD_WORKSPACE_CREATE: 'cloudWorkspace:create',
+  CLOUD_WORKSPACE_LINK_LOCAL: 'cloudWorkspace:linkLocal',
+  SYNC_GET_STATUS: 'sync:getStatus',
+  SYNC_RECONNECT: 'sync:reconnect',
+
   // Onboarding
   ONBOARDING_GET_AUTH_STATE: 'onboarding:getAuthState',
   ONBOARDING_VALIDATE_MCP: 'onboarding:validateMcp',
@@ -975,6 +1020,17 @@ export interface ElectronAPI {
 
   // Credential health check (startup validation)
   getCredentialHealth(): Promise<CredentialHealthStatus>
+
+  // Cloud auth/sync (experimental)
+  supabaseSignUp(email: string, password: string): Promise<{ success: boolean; error?: string }>
+  supabaseSignIn(email: string, password: string): Promise<{ success: boolean; error?: string }>
+  supabaseSignOut(): Promise<{ success: boolean; error?: string }>
+  supabaseGetUser(): Promise<SupabaseAuthState>
+  cloudWorkspaceList(): Promise<CloudWorkspace[]>
+  cloudWorkspaceCreate(name: string): Promise<{ success: boolean; error?: string; workspace?: CloudWorkspace }>
+  cloudWorkspaceLinkLocal(localWorkspaceId: string, cloudWorkspaceId: string): Promise<{ success: boolean; error?: string; link?: WorkspaceLinkState }>
+  syncGetStatus(): Promise<SyncStatus>
+  syncReconnect(): Promise<{ success: boolean; error?: string }>
 
   // Onboarding
   getAuthState(): Promise<AuthState>

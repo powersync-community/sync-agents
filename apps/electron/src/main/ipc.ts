@@ -21,6 +21,8 @@ import { AppServerClient, getCodexPath } from '@craft-agent/shared/codex'
 import type { ModelDefinition } from '@craft-agent/shared/config'
 import { MarkItDown } from 'markitdown-js'
 import { isUsableGitBashPath, validateGitBashPath } from './git-bash'
+import { SupabaseAuthService } from './cloud/supabase-auth'
+import { PowerSyncService } from './cloud/powersync-service'
 
 /**
  * Sanitizes a filename to prevent path traversal and filesystem issues.
@@ -454,6 +456,14 @@ async function validateFilePath(filePath: string): Promise<string> {
 }
 
 export function registerIpcHandlers(sessionManager: SessionManager, windowManager: WindowManager): void {
+  const cloudExperimentalEnabled = process.env.CLOUD_SYNC_EXPERIMENTAL === '1'
+  const cloudDisabledError = 'Not yet implemented'
+  const supabaseAuthService = new SupabaseAuthService()
+  const powerSyncService = new PowerSyncService()
+  if (cloudExperimentalEnabled) {
+    void supabaseAuthService.initialize()
+  }
+
   // Get all sessions for the calling window's workspace
   // Waits for initialization to complete so sessions are never returned empty during startup
   ipcMain.handle(IPC_CHANNELS.GET_SESSIONS, async (event) => {
@@ -1576,6 +1586,67 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
   ipcMain.handle(IPC_CHANNELS.CREDENTIAL_HEALTH_CHECK, async () => {
     const manager = getCredentialManager()
     return manager.checkHealth()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SUPABASE_SIGN_UP, async (_event, email: string, password: string) => {
+    if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
+    return supabaseAuthService.signUp(email, password)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SUPABASE_SIGN_IN, async (_event, email: string, password: string) => {
+    if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
+    const result = await supabaseAuthService.signIn(email, password)
+    if (result.success) {
+      await powerSyncService.connect()
+    }
+    return result
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SUPABASE_SIGN_OUT, async () => {
+    if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
+    const result = await supabaseAuthService.signOut()
+    if (result.success) {
+      await powerSyncService.disconnect()
+    }
+    return result
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SUPABASE_GET_USER, async () => {
+    if (!cloudExperimentalEnabled) {
+      return {
+        configured: false,
+        authenticated: false,
+        verified: false,
+        user: null,
+      }
+    }
+    return supabaseAuthService.getAuthState()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CLOUD_WORKSPACE_LIST, async () => {
+    if (!cloudExperimentalEnabled) return []
+    return []
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CLOUD_WORKSPACE_CREATE, async (_event, _name: string) => {
+    if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
+    return { success: false, error: 'Not yet implemented' }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CLOUD_WORKSPACE_LINK_LOCAL, async (_event, _localWorkspaceId: string, _cloudWorkspaceId: string) => {
+    if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
+    return { success: false, error: 'Not yet implemented' }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SYNC_GET_STATUS, async () => {
+    if (!cloudExperimentalEnabled) return powerSyncService.getStatus()
+    return powerSyncService.getStatus()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SYNC_RECONNECT, async () => {
+    if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
+    await powerSyncService.reconnect()
+    return { success: true }
   })
 
   // Unified handler for LLM connection setup
