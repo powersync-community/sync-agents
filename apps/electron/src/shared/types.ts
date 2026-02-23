@@ -99,6 +99,11 @@ export interface WorkspaceLinkState {
   storageMode: StorageMode
 }
 
+export interface CreateWorkspaceOptions {
+  storageMode?: StorageMode
+  cloudWorkspaceId?: string
+}
+
 export interface SyncStatus {
   configured: boolean
   connected: boolean
@@ -941,8 +946,8 @@ export interface ElectronAPI {
 
   // Workspace management
   getWorkspaces(): Promise<Workspace[]>
-  createWorkspace(folderPath: string, name: string): Promise<Workspace>
-  checkWorkspaceSlug(slug: string): Promise<{ exists: boolean; path: string }>
+  createWorkspace(folderPath: string, name: string, options?: CreateWorkspaceOptions): Promise<Workspace>
+  checkWorkspaceSlug(slug: string, basePath?: string): Promise<{ exists: boolean; path: string }>
 
   // Window management
   getWindowWorkspace(): Promise<string | null>

@@ -7,6 +7,7 @@
  * Note: Different from SourceMcpAuthType which uses 'oauth' | 'bearer' | 'none' for individual sources
  */
 export type McpAuthType = 'workspace_oauth' | 'workspace_bearer' | 'public';
+export type StorageMode = 'local_only' | 'cloud_canonical';
 
 export interface Workspace {
   id: string;
@@ -17,6 +18,8 @@ export interface Workspace {
   iconUrl?: string;
   mcpUrl?: string;
   mcpAuthType?: McpAuthType;
+  storageMode?: StorageMode;
+  cloudWorkspaceId?: string;
 }
 
 /**
@@ -48,4 +51,3 @@ export interface StoredConfig {
   activeSessionId: string | null;  // Currently active session (primary scope)
   model?: string;
 }
-

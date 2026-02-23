@@ -540,6 +540,7 @@ export function addWorkspace(workspace: Omit<Workspace, 'id' | 'createdAt'>): Wo
     const updated: Workspace = {
       ...existing,
       ...workspace,
+      storageMode: workspace.storageMode ?? existing.storageMode ?? 'local_only',
       id: existing.id,
       createdAt: existing.createdAt,
     };
@@ -551,6 +552,7 @@ export function addWorkspace(workspace: Omit<Workspace, 'id' | 'createdAt'>): Wo
 
   const newWorkspace: Workspace = {
     ...workspace,
+    storageMode: workspace.storageMode ?? 'local_only',
     id: generateWorkspaceId(),
     createdAt: Date.now(),
   };
@@ -595,6 +597,7 @@ export function syncWorkspaces(): void {
       id: wsConfig.id || generateWorkspaceId(),
       name: wsConfig.name,
       rootPath,
+      storageMode: 'local_only',
       createdAt: wsConfig.createdAt || Date.now(),
     };
 

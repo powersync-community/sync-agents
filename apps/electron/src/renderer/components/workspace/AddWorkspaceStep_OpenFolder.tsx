@@ -8,6 +8,7 @@ interface AddWorkspaceStep_OpenFolderProps {
   onBack: () => void
   onCreate: (folderPath: string, name: string) => Promise<void>
   isCreating: boolean
+  submitError?: string | null
 }
 
 /**
@@ -16,7 +17,8 @@ interface AddWorkspaceStep_OpenFolderProps {
 export function AddWorkspaceStep_OpenFolder({
   onBack,
   onCreate,
-  isCreating
+  isCreating,
+  submitError = null,
 }: AddWorkspaceStep_OpenFolderProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [workspaceName, setWorkspaceName] = useState('')
@@ -106,6 +108,9 @@ export function AddWorkspaceStep_OpenFolder({
         >
           Open
         </AddWorkspacePrimaryButton>
+        {submitError && (
+          <p className="text-xs text-destructive">{submitError}</p>
+        )}
       </div>
     </AddWorkspaceContainer>
   )

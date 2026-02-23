@@ -23,6 +23,7 @@ import { MarkItDown } from 'markitdown-js'
 import { isUsableGitBashPath, validateGitBashPath } from './git-bash'
 import { SupabaseAuthService } from './cloud/supabase-auth'
 import { PowerSyncService } from './cloud/powersync-service'
+import { ensureCloudWorkspaceStoragePaths } from './cloud/workspace-storage'
 
 /**
  * Sanitizes a filename to prevent path traversal and filesystem issues.
@@ -493,19 +494,51 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
   })
 
   // Create a new workspace at a folder path (Obsidian-style: folder IS the workspace)
-  ipcMain.handle(IPC_CHANNELS.CREATE_WORKSPACE, async (_event, folderPath: string, name: string) => {
+  ipcMain.handle(
+    IPC_CHANNELS.CREATE_WORKSPACE,
+    async (
+      _event,
+      folderPath: string,
+      name: string,
+      options?: { storageMode?: 'local_only' | 'cloud_canonical'; cloudWorkspaceId?: string }
+    ) => {
     const rootPath = folderPath
-    const workspace = addWorkspace({ name, rootPath })
+    const storageMode = options?.storageMode ?? 'local_only'
+
+    if (storageMode === 'cloud_canonical') {
+      if (!cloudExperimentalEnabled) {
+        throw new Error(cloudDisabledError)
+      }
+      const authState = await supabaseAuthService.getAuthState()
+      if (!authState.authenticated) {
+        throw new Error('Sign in is required to create a cloud workspace')
+      }
+      if (!authState.verified) {
+        throw new Error('Verified email is required to create a cloud workspace')
+      }
+      if (!options?.cloudWorkspaceId) {
+        throw new Error('Cloud workspace is not yet available')
+      }
+      await ensureCloudWorkspaceStoragePaths(rootPath)
+    }
+
+    const workspace = addWorkspace({
+      name,
+      rootPath,
+      storageMode,
+      cloudWorkspaceId: options?.cloudWorkspaceId,
+    })
     // Make it active
     setActiveWorkspace(workspace.id)
     ipcLog.info(`Created workspace "${name}" at ${rootPath}`)
     return workspace
-  })
+    }
+  )
 
   // Check if a workspace slug already exists (for validation before creation)
-  ipcMain.handle(IPC_CHANNELS.CHECK_WORKSPACE_SLUG, async (_event, slug: string) => {
+  ipcMain.handle(IPC_CHANNELS.CHECK_WORKSPACE_SLUG, async (_event, slug: string, basePath?: string) => {
     const defaultWorkspacesDir = join(homedir(), '.craft-agent', 'workspaces')
-    const workspacePath = join(defaultWorkspacesDir, slug)
+    const workspacePath = join(basePath || defaultWorkspacesDir, slug)
     const exists = existsSync(workspacePath)
     return { exists, path: workspacePath }
   })
