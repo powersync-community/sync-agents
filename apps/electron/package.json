@@ -51,6 +51,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@tanstack/react-table": "^8.21.3",
     "@powersync/node": "^0.16.0",
+    "@supabase/supabase-js": "^2.58.0",
     "better-sqlite3": "^12.2.0",
     "chrono-node": "^2.9.0",
     "cmdk": "^1.1.1",

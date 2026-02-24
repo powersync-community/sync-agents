@@ -1621,11 +1621,6 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     return manager.checkHealth()
   })
 
-  ipcMain.handle(IPC_CHANNELS.SUPABASE_SIGN_UP, async (_event, email: string, password: string) => {
-    if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
-    return supabaseAuthService.signUp(email, password)
-  })
-
   ipcMain.handle(IPC_CHANNELS.SUPABASE_SIGN_IN, async (_event, email: string, password: string) => {
     if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
     const result = await supabaseAuthService.signIn(email, password)

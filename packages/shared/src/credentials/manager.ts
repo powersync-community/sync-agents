@@ -228,6 +228,43 @@ export class CredentialManager {
     });
   }
 
+  /** Get Supabase auth credentials (session tokens) */
+  async getSupabaseAuth(): Promise<{
+    accessToken: string;
+    refreshToken?: string;
+    expiresAt?: number;
+    tokenType?: string;
+  } | null> {
+    const cred = await this.get({ type: 'supabase_auth' });
+    if (!cred) return null;
+    return {
+      accessToken: cred.value,
+      refreshToken: cred.refreshToken,
+      expiresAt: cred.expiresAt,
+      tokenType: cred.tokenType,
+    };
+  }
+
+  /** Set Supabase auth credentials (session tokens) */
+  async setSupabaseAuth(credentials: {
+    accessToken: string;
+    refreshToken?: string;
+    expiresAt?: number;
+    tokenType?: string;
+  }): Promise<void> {
+    await this.set({ type: 'supabase_auth' }, {
+      value: credentials.accessToken,
+      refreshToken: credentials.refreshToken,
+      expiresAt: credentials.expiresAt,
+      tokenType: credentials.tokenType,
+    });
+  }
+
+  /** Delete Supabase auth credentials */
+  async deleteSupabaseAuth(): Promise<void> {
+    await this.delete({ type: 'supabase_auth' });
+  }
+
   /** Get workspace MCP OAuth credentials */
   async getWorkspaceOAuth(workspaceId: string): Promise<{
     accessToken: string;

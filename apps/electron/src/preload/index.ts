@@ -167,7 +167,6 @@ const api: ElectronAPI = {
   getCredentialHealth: () => ipcRenderer.invoke(IPC_CHANNELS.CREDENTIAL_HEALTH_CHECK),
 
   // Cloud auth/sync (experimental)
-  supabaseSignUp: (email: string, password: string) => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_SIGN_UP, email, password),
   supabaseSignIn: (email: string, password: string) => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_SIGN_IN, email, password),
   supabaseSignOut: () => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_SIGN_OUT),
   supabaseGetUser: () => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_GET_USER),

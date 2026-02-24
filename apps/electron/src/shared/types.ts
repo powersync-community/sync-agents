@@ -709,7 +709,6 @@ export const IPC_CHANNELS = {
   CREDENTIAL_HEALTH_CHECK: 'credentials:healthCheck',
 
   // Cloud auth/sync (experimental)
-  SUPABASE_SIGN_UP: 'supabase:signUp',
   SUPABASE_SIGN_IN: 'supabase:signIn',
   SUPABASE_SIGN_OUT: 'supabase:signOut',
   SUPABASE_GET_USER: 'supabase:getUser',
@@ -1027,7 +1026,6 @@ export interface ElectronAPI {
   getCredentialHealth(): Promise<CredentialHealthStatus>
 
   // Cloud auth/sync (experimental)
-  supabaseSignUp(email: string, password: string): Promise<{ success: boolean; error?: string }>
   supabaseSignIn(email: string, password: string): Promise<{ success: boolean; error?: string }>
   supabaseSignOut(): Promise<{ success: boolean; error?: string }>
   supabaseGetUser(): Promise<SupabaseAuthState>
