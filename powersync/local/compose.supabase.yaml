@@ -1,0 +1,19 @@
+services:
+  powersync:
+    image: journeyapps/powersync-service:1.20.1
+    container_name: powersync_syncagents
+    restart: unless-stopped
+    env_file:
+      - .env.supabase
+    volumes:
+      - ./powersync.yaml:/app/powersync.yaml:ro
+      - ./sync-config.yaml:/app/sync-config.yaml:ro
+    ports:
+      - ${PS_PORT}:${PS_PORT}
+      - ${PS_TELEMETRY_PORT}:${PS_TELEMETRY_PORT}
+    networks:
+      - supabase_network_syncagents
+
+networks:
+  supabase_network_syncagents:
+    external: true

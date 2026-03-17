@@ -75,9 +75,23 @@ irm https://agents.craft.do/install-app.ps1 | iex
 ### Build from Source
 
 ```bash
-git clone https://github.com/lukilabs/craft-agents-oss.git
-cd craft-agents-oss
+git clone https://github.com/lukilabs/sync-agents.git
+cd syn-agents
 bun install
+```
+
+```bash
+cp .env.example .env
+```
+
+```
+bun start:local
+```
+
+Copy you Supabase publishable key into the `.env` file
+
+
+```
 bun run electron:start
 ```
 
