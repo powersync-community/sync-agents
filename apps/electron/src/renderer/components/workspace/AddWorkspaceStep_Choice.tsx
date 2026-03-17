@@ -1,10 +1,9 @@
-import { Cloud, FolderPlus, FolderOpen } from "lucide-react"
+import { FolderPlus, FolderOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AddWorkspaceContainer, AddWorkspaceStepHeader } from "./primitives"
 
 interface AddWorkspaceStep_ChoiceProps {
   onCreateNew: () => void
-  onCreateCloud: () => void
   onOpenFolder: () => void
 }
 
@@ -55,7 +54,6 @@ function ChoiceCard({ icon, title, description, onClick, variant = 'secondary' }
  */
 export function AddWorkspaceStep_Choice({
   onCreateNew,
-  onCreateCloud,
   onOpenFolder
 }: AddWorkspaceStep_ChoiceProps) {
   return (
@@ -73,13 +71,6 @@ export function AddWorkspaceStep_Choice({
           description="Start fresh with an empty workspace."
           onClick={onCreateNew}
           variant="primary"
-        />
-
-        <ChoiceCard
-          icon={<Cloud className="h-5 w-5 text-blue-500" />}
-          title="Create cloud workspace"
-          description="Create a workspace that syncs with your team."
-          onClick={onCreateCloud}
         />
 
         <ChoiceCard

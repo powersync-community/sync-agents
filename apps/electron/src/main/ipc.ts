@@ -23,7 +23,6 @@ import { MarkItDown } from 'markitdown-js'
 import { isUsableGitBashPath, validateGitBashPath } from './git-bash'
 import { SupabaseAuthService } from './cloud/supabase-auth'
 import { PowerSyncService } from './cloud/powersync-service'
-import { ensureCloudWorkspaceStoragePaths } from './cloud/workspace-storage'
 
 /**
  * Sanitizes a filename to prevent path traversal and filesystem issues.
@@ -503,30 +502,11 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
       options?: { storageMode?: 'local_only' | 'cloud_canonical'; cloudWorkspaceId?: string }
     ) => {
     const rootPath = folderPath
-    const storageMode = options?.storageMode ?? 'local_only'
-
-    if (storageMode === 'cloud_canonical') {
-      if (!cloudExperimentalEnabled) {
-        throw new Error(cloudDisabledError)
-      }
-      const authState = await supabaseAuthService.getAuthState()
-      if (!authState.authenticated) {
-        throw new Error('Sign in is required to create a cloud workspace')
-      }
-      if (!authState.verified) {
-        throw new Error('Verified email is required to create a cloud workspace')
-      }
-      if (!options?.cloudWorkspaceId) {
-        throw new Error('Cloud workspace is not yet available')
-      }
-      await ensureCloudWorkspaceStoragePaths(rootPath)
-    }
 
     const workspace = addWorkspace({
       name,
       rootPath,
-      storageMode,
-      cloudWorkspaceId: options?.cloudWorkspaceId,
+      storageMode: 'local_only',
     })
     // Make it active
     setActiveWorkspace(workspace.id)

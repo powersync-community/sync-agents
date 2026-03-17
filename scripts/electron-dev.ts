@@ -6,6 +6,7 @@
 import { spawn, type Subprocess } from "bun";
 import { existsSync, rmSync, cpSync, readFileSync, statSync, mkdirSync } from "fs";
 import { join, basename } from "path";
+import { homedir } from "os";
 import * as esbuild from "esbuild";
 
 const ROOT_DIR = join(import.meta.dir, "..");
@@ -216,7 +217,9 @@ function getElectronEnv(): Record<string, string> {
   return {
     ...process.env as Record<string, string>,
     VITE_DEV_SERVER_URL: `http://localhost:${vitePort}`,
-    CRAFT_CONFIG_DIR: process.env.CRAFT_CONFIG_DIR || "",
+    // Use a separate config dir in dev so prod data (~/.craft-agent) stays clean.
+    // Can be overridden via CRAFT_CONFIG_DIR in .env (or instance detection sets it to ~/.craft-agent-N).
+    CRAFT_CONFIG_DIR: process.env.CRAFT_CONFIG_DIR || join(homedir(), ".craft-agent-dev"),
     CRAFT_APP_NAME: process.env.CRAFT_APP_NAME || "Craft Agents",
     CRAFT_DEEPLINK_SCHEME: process.env.CRAFT_DEEPLINK_SCHEME || "craftagents",
     CRAFT_INSTANCE_NUMBER: process.env.CRAFT_INSTANCE_NUMBER || "",

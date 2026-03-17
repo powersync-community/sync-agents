@@ -13,7 +13,6 @@ interface AddWorkspaceStep_CreateNewProps {
   onBack: () => void
   onCreate: (folderPath: string, name: string) => Promise<void>
   isCreating: boolean
-  mode?: 'local' | 'cloud'
   submitError?: string | null
 }
 
@@ -28,7 +27,6 @@ export function AddWorkspaceStep_CreateNew({
   onBack,
   onCreate,
   isCreating,
-  mode = 'local',
   submitError = null,
 }: AddWorkspaceStep_CreateNewProps) {
   const [name, setName] = useState('')
@@ -44,9 +42,7 @@ export function AddWorkspaceStep_CreateNew({
   }, [])
 
   const slug = slugify(name)
-  const defaultBasePath = homeDir
-    ? (mode === 'cloud' ? `${homeDir}/.craft-agent` : `${homeDir}/.craft-agent/workspaces`)
-    : (mode === 'cloud' ? '~/.craft-agent' : '~/.craft-agent/workspaces')
+  const defaultBasePath = homeDir ? `${homeDir}/.craft-agent/workspaces` : '~/.craft-agent/workspaces'
   const finalPath = locationOption === 'default'
     ? `${defaultBasePath}/${slug}`
     : customPath
@@ -95,8 +91,6 @@ export function AddWorkspaceStep_CreateNew({
 
   const canCreate = name.trim() && finalPath && !error && !isValidating && !isCreating
 
-  const isCloud = mode === 'cloud'
-
   return (
     <AddWorkspaceContainer>
       {/* Back button */}
@@ -114,10 +108,8 @@ export function AddWorkspaceStep_CreateNew({
       </button>
 
       <AddWorkspaceStepHeader
-        title={isCloud ? "Create cloud workspace" : "Create workspace"}
-        description={isCloud
-          ? "Enter a name and choose where to store your local mirror."
-          : "Enter a name and choose where to store your workspace."}
+        title="Create workspace"
+        description="Enter a name and choose where to store your workspace."
       />
 
       <div className="mt-6 w-full space-y-6">
@@ -154,7 +146,7 @@ export function AddWorkspaceStep_CreateNew({
             onChange={() => setLocationOption('default')}
             disabled={isCreating}
             title="Default location"
-            subtitle={isCloud ? "under .craft-agent folder" : "under .craft-agent/workspaces"}
+            subtitle="under .craft-agent/workspaces"
           />
 
           {/* Custom location option */}
@@ -184,9 +176,9 @@ export function AddWorkspaceStep_CreateNew({
           onClick={handleCreate}
           disabled={!canCreate}
           loading={isCreating}
-          loadingText={isCloud ? "Creating cloud workspace..." : "Creating..."}
+          loadingText="Creating..."
         >
-          {isCloud ? "Create cloud workspace" : "Create"}
+          Create
         </AddWorkspacePrimaryButton>
         {submitError && (
           <p className="text-xs text-destructive">{submitError}</p>

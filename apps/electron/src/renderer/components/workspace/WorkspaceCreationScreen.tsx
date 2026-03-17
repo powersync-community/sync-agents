@@ -34,7 +34,6 @@ export function WorkspaceCreationScreen({
   className
 }: WorkspaceCreationScreenProps) {
   const [step, setStep] = useState<CreationStep>('choice')
-  const [createMode, setCreateMode] = useState<'local' | 'cloud'>('local')
   const [isCreating, setIsCreating] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [dimensions, setDimensions] = useState({ width: 1920, height: 1080 })
@@ -61,28 +60,6 @@ export function WorkspaceCreationScreen({
     setIsCreating(true)
     setSubmitError(null)
     try {
-      if (createMode === 'cloud') {
-        const auth = await window.electronAPI.supabaseGetUser()
-        if (!auth.authenticated) {
-          throw new Error('Sign in is required to create a cloud workspace')
-        }
-        if (!auth.verified) {
-          throw new Error('Verified email is required to create a cloud workspace')
-        }
-
-        const cloudResult = await window.electronAPI.cloudWorkspaceCreate(name)
-        if (!cloudResult.success || !cloudResult.workspace?.id) {
-          throw new Error(cloudResult.error || 'Cloud workspace is not yet available')
-        }
-
-        const workspace = await window.electronAPI.createWorkspace(folderPath, name, {
-          storageMode: 'cloud_canonical',
-          cloudWorkspaceId: cloudResult.workspace.id,
-        })
-        onWorkspaceCreated(workspace)
-        return
-      }
-
       const workspace = await window.electronAPI.createWorkspace(folderPath, name, {
         storageMode: 'local_only',
       })
@@ -93,7 +70,7 @@ export function WorkspaceCreationScreen({
     } finally {
       setIsCreating(false)
     }
-  }, [createMode, onWorkspaceCreated])
+  }, [onWorkspaceCreated])
 
   const renderStep = () => {
     switch (step) {
@@ -101,17 +78,10 @@ export function WorkspaceCreationScreen({
         return (
           <AddWorkspaceStep_Choice
             onCreateNew={() => {
-              setCreateMode('local')
-              setSubmitError(null)
-              setStep('create')
-            }}
-            onCreateCloud={() => {
-              setCreateMode('cloud')
               setSubmitError(null)
               setStep('create')
             }}
             onOpenFolder={() => {
-              setCreateMode('local')
               setSubmitError(null)
               setStep('open')
             }}
@@ -127,7 +97,6 @@ export function WorkspaceCreationScreen({
             }}
             onCreate={handleCreateWorkspace}
             isCreating={isCreating}
-            mode={createMode}
             submitError={submitError}
           />
         )
