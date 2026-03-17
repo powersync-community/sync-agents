@@ -11,18 +11,10 @@ replication:
 storage:
   type: !env PS_SYNC_BUCKET_TYPE
   uri: !env PS_SYNC_BUCKET_URI
+  sslmode: disable
 
-sync_rules:
-  content: |
-    bucket_definitions:
-      workspace_data:
-        parameters: SELECT cloud_workspace_id::text AS cloud_workspace_id FROM public.workspace_members WHERE user_id = request.user_id()
-        data:
-          - SELECT * FROM public.cloud_workspaces WHERE id::text = bucket.cloud_workspace_id
-          - SELECT * FROM public.workspace_members WHERE cloud_workspace_id::text = bucket.cloud_workspace_id
-          - SELECT * FROM public.chat_sessions WHERE cloud_workspace_id::text = bucket.cloud_workspace_id
-          - SELECT * FROM public.chat_messages WHERE cloud_workspace_id::text = bucket.cloud_workspace_id
-          - SELECT * FROM public.chat_attachments WHERE cloud_workspace_id::text = bucket.cloud_workspace_id
+sync_config:
+  file: ./sync-config.yaml
 
 client_auth:
   jwks_uri: !env PS_BACKEND_JWKS_URI

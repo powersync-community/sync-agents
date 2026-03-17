@@ -1,0 +1,16 @@
+config:
+    edition: 3
+
+streams:
+  workspace_data:
+    auto_subscribe: true
+    with:
+      user_workspaces: >
+        SELECT cloud_workspace_id FROM public.workspace_members
+        WHERE user_id = auth.user_id()
+    queries:
+      - SELECT * FROM public.cloud_workspaces WHERE id IN user_workspaces
+      - SELECT * FROM public.workspace_members WHERE cloud_workspace_id IN user_workspaces
+      - SELECT * FROM public.chat_sessions WHERE cloud_workspace_id IN user_workspaces
+      - SELECT * FROM public.chat_messages WHERE cloud_workspace_id IN user_workspaces
+      - SELECT * FROM public.chat_attachments WHERE cloud_workspace_id IN user_workspaces

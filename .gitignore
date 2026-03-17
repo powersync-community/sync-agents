@@ -8,6 +8,9 @@ dist
 .build
 apps/electron/release
 
+.temp
+.branches
+
 # code coverage
 coverage
 *.lcov

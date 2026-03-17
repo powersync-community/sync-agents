@@ -312,10 +312,7 @@ begin
   end if;
 end $$;
 
-drop publication if exists powersync;
-create publication powersync for table
-  public.cloud_workspaces,
-  public.workspace_members,
-  public.chat_sessions,
-  public.chat_messages,
-  public.chat_attachments;
+-- Drop publication if it exists
+DROP PUBLICATION IF EXISTS powersync;
+-- Create publication for PowerSync
+create publication powersync for all tables;
