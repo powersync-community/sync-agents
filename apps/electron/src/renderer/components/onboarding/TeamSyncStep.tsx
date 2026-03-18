@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { StepFormLayout, BackButton, ContinueButton } from './primitives'
 
 type AuthMode = 'signin' | 'signup'
-type AuthStatus = 'idle' | 'loading' | 'error' | 'success'
+type AuthStatus = 'idle' | 'loading' | 'provisioning' | 'error' | 'success'
 
 interface TeamSyncStepProps {
   onComplete: () => void
@@ -30,18 +30,49 @@ export function TeamSyncStep({ onComplete, onBack, onSkip }: TeamSyncStepProps) 
     setErrorMessage(undefined)
 
     try {
+      // 1. Authenticate
       const result = mode === 'signup'
         ? await window.electronAPI.supabaseSignUp(email, password)
         : await window.electronAPI.supabaseSignIn(email, password)
 
-      if (result.success) {
-        setStatus('success')
-        // Brief success state, then proceed
-        setTimeout(() => onComplete(), 800)
-      } else {
+      if (!result.success) {
         setStatus('error')
         setErrorMessage(result.error || 'Authentication failed')
+        return
       }
+
+      // 2. Provision workspace
+      setStatus('provisioning')
+
+      const existingWorkspaces = await window.electronAPI.cloudWorkspaceList()
+
+      let cloudWorkspaceId: string
+
+      if (existingWorkspaces.length > 0) {
+        cloudWorkspaceId = existingWorkspaces[0].id
+      } else {
+        const createResult = await window.electronAPI.cloudWorkspaceCreate('My Workspace')
+        if (!createResult.success || !createResult.workspace) {
+          setStatus('error')
+          setErrorMessage(createResult.error || 'Failed to create cloud workspace')
+          return
+        }
+        cloudWorkspaceId = createResult.workspace.id
+      }
+
+      // 3. Link to current local workspace
+      const wsId = await window.electronAPI.getWindowWorkspace()
+      if (wsId) {
+        const linkResult = await window.electronAPI.cloudWorkspaceLinkLocal(wsId, cloudWorkspaceId)
+        if (!linkResult.success) {
+          console.warn('Failed to link workspace:', linkResult.error)
+          // Non-fatal: auth succeeded, workspace linking can be retried from settings
+        }
+      }
+
+      // 4. Done
+      setStatus('success')
+      setTimeout(() => onComplete(), 800)
     } catch (err) {
       setStatus('error')
       setErrorMessage(err instanceof Error ? err.message : 'Authentication failed')
@@ -54,8 +85,14 @@ export function TeamSyncStep({ onComplete, onBack, onSkip }: TeamSyncStepProps) 
     setErrorMessage(undefined)
   }, [])
 
-  const isLoading = status === 'loading'
+  const isLoading = status === 'loading' || status === 'provisioning'
   const isSuccess = status === 'success'
+
+  const loadingText = status === 'provisioning'
+    ? 'Setting up workspace...'
+    : mode === 'signup'
+      ? 'Creating account...'
+      : 'Signing in...'
 
   return (
     <StepFormLayout
@@ -73,7 +110,7 @@ export function TeamSyncStep({ onComplete, onBack, onSkip }: TeamSyncStepProps) 
             <ContinueButton
               onClick={handleSubmit}
               loading={isLoading}
-              loadingText={mode === 'signup' ? 'Creating account...' : 'Signing in...'}
+              loadingText={loadingText}
               disabled={isLoading || !email.trim() || !password.trim()}
             >
               {mode === 'signup' ? 'Sign Up' : 'Sign In'}

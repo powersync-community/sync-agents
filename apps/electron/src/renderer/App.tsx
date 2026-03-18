@@ -305,7 +305,6 @@ export default function App() {
     onComplete: handleOnboardingComplete,
     onConfigSaved: refreshLlmConnections,
     initialSetupNeeds: setupNeeds || undefined,
-    initialStep: 'team-sync', // TEMPORARY: for testing team-sync step (revert after testing)
   })
 
   // Reauth login handler - placeholder (reauth is not currently used)
@@ -345,14 +344,12 @@ export default function App() {
         const needs = await window.electronAPI.getSetupNeeds()
         setSetupNeeds(needs)
 
-        // TEMPORARY: Force onboarding at team-sync step for testing (revert after testing)
-        setAppState('onboarding')
-        // if (needs.isFullyConfigured) {
-        //   setAppState('ready')
-        // } else {
-        //   // New user or needs setup - show onboarding
-        //   setAppState('onboarding')
-        // }
+        if (needs.isFullyConfigured) {
+          setAppState('ready')
+        } else {
+          // New user or needs setup - show onboarding
+          setAppState('onboarding')
+        }
       } catch (error) {
         console.error('Failed to check auth state:', error)
         // If check fails, show onboarding to be safe
