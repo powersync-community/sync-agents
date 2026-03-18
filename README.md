@@ -75,7 +75,7 @@ irm https://agents.craft.do/install-app.ps1 | iex
 ### Build from Source
 
 ```bash
-git clone https://github.com/lukilabs/sync-agents.git
+git clone https://github.com/powersync-community/sync-agents.git
 cd syn-agents
 bun install
 ```

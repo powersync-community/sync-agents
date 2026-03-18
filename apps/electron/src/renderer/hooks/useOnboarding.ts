@@ -254,6 +254,10 @@ export function useOnboarding({
         break
 
       case 'complete':
+        setState(s => ({ ...s, step: 'team-sync' }))
+        break
+
+      case 'team-sync':
         onComplete()
         break
     }
@@ -279,6 +283,9 @@ export function useOnboarding({
         break
       case 'credentials':
         setState(s => ({ ...s, step: 'api-setup', credentialStatus: 'idle', errorMessage: undefined }))
+        break
+      case 'team-sync':
+        setState(s => ({ ...s, step: 'complete' }))
         break
     }
   }, [state.step, state.gitBashStatus, initialStep, onDismiss])
