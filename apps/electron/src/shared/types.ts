@@ -710,6 +710,7 @@ export const IPC_CHANNELS = {
 
   // Cloud auth/sync (experimental)
   SUPABASE_SIGN_IN: 'supabase:signIn',
+  SUPABASE_SIGN_UP: 'supabase:signUp',
   SUPABASE_SIGN_OUT: 'supabase:signOut',
   SUPABASE_GET_USER: 'supabase:getUser',
   CLOUD_WORKSPACE_LIST: 'cloudWorkspace:list',
@@ -1027,6 +1028,7 @@ export interface ElectronAPI {
 
   // Cloud auth/sync (experimental)
   supabaseSignIn(email: string, password: string): Promise<{ success: boolean; error?: string }>
+  supabaseSignUp(email: string, password: string): Promise<{ success: boolean; error?: string }>
   supabaseSignOut(): Promise<{ success: boolean; error?: string }>
   supabaseGetUser(): Promise<SupabaseAuthState>
   cloudWorkspaceList(): Promise<CloudWorkspace[]>

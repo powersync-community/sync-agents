@@ -168,6 +168,7 @@ const api: ElectronAPI = {
 
   // Cloud auth/sync (experimental)
   supabaseSignIn: (email: string, password: string) => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_SIGN_IN, email, password),
+  supabaseSignUp: (email: string, password: string) => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_SIGN_UP, email, password),
   supabaseSignOut: () => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_SIGN_OUT),
   supabaseGetUser: () => ipcRenderer.invoke(IPC_CHANNELS.SUPABASE_GET_USER),
   cloudWorkspaceList: () => ipcRenderer.invoke(IPC_CHANNELS.CLOUD_WORKSPACE_LIST),

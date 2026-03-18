@@ -4,6 +4,7 @@ import { APISetupStep, type ApiSetupMethod } from "./APISetupStep"
 import { CredentialsStep, type CredentialStatus } from "./CredentialsStep"
 import { CompletionStep } from "./CompletionStep"
 import { GitBashWarning, type GitBashStatus } from "./GitBashWarning"
+import { TeamSyncStep } from "./TeamSyncStep"
 import type { ApiKeySubmitData } from "../apisetup"
 
 export type OnboardingStep =
@@ -12,6 +13,7 @@ export type OnboardingStep =
   | 'api-setup'
   | 'credentials'
   | 'complete'
+  | 'team-sync'
 
 export type LoginStatus = 'idle' | 'waiting' | 'success' | 'error'
 
@@ -143,6 +145,15 @@ export function OnboardingWizard({
           <CompletionStep
             status={state.completionStatus}
             onFinish={onFinish}
+          />
+        )
+
+      case 'team-sync':
+        return (
+          <TeamSyncStep
+            onComplete={onFinish}
+            onBack={onBack}
+            onSkip={onFinish}
           />
         )
 
