@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils'
 import { routes } from '@/lib/navigate'
 import { Spinner } from '@craft-agent/ui'
 import { RenameDialog } from '@/components/ui/rename-dialog'
-import type { PermissionMode, WorkspaceSettings, LoadedSource } from '../../../shared/types'
+import type { PermissionMode, WorkspaceSettings, LoadedSource, SupabaseAuthState, SyncStatus } from '../../../shared/types'
 import { PERMISSION_MODE_CONFIG } from '@craft-agent/shared/agent/mode-types'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import { SourceAvatar } from '@/components/ui/source-avatar'
@@ -68,6 +68,15 @@ export default function WorkspaceSettingsPage() {
   // Mode cycling state
   const [enabledModes, setEnabledModes] = useState<PermissionMode[]>(['safe', 'ask', 'allow-all'])
   const [modeCyclingError, setModeCyclingError] = useState<string | null>(null)
+
+  // Team Sync state
+  const [cloudAuthState, setCloudAuthState] = useState<SupabaseAuthState | null>(null)
+  const [cloudWorkspaceName, setCloudWorkspaceName] = useState<string | null>(null)
+  const [teamSyncLoading, setTeamSyncLoading] = useState(false)
+  const [teamSyncError, setTeamSyncError] = useState<string>()
+  const [teamSyncMode, setTeamSyncMode] = useState<'signin' | 'signup'>('signin')
+  const [teamSyncEmail, setTeamSyncEmail] = useState('')
+  const [teamSyncPassword, setTeamSyncPassword] = useState('')
 
   // Load workspace settings when active workspace changes
   useEffect(() => {
@@ -131,6 +140,21 @@ export default function WorkspaceSettingsPage() {
         }
         if (!iconFound) {
           setWsIconUrl(null)
+        }
+
+        // Load cloud sync state
+        try {
+          const authState = await window.electronAPI.supabaseGetUser()
+          setCloudAuthState(authState)
+
+          if (authState.authenticated) {
+            const workspaces = await window.electronAPI.cloudWorkspaceList()
+            if (workspaces.length > 0) {
+              setCloudWorkspaceName(workspaces[0].name)
+            }
+          }
+        } catch {
+          // Cloud sync not available — ignore
         }
       } catch (error) {
         console.error('Failed to load workspace settings:', error)
@@ -311,6 +335,74 @@ export default function WorkspaceSettingsPage() {
     },
     [enabledModes, updateWorkspaceSetting]
   )
+
+  // Team Sync auth handler
+  const handleTeamSyncAuth = useCallback(async () => {
+    if (!teamSyncEmail.trim() || !teamSyncPassword.trim()) {
+      setTeamSyncError('Please enter both email and password.')
+      return
+    }
+
+    setTeamSyncLoading(true)
+    setTeamSyncError(undefined)
+
+    try {
+      // 1. Authenticate
+      const result = teamSyncMode === 'signup'
+        ? await window.electronAPI.supabaseSignUp(teamSyncEmail, teamSyncPassword)
+        : await window.electronAPI.supabaseSignIn(teamSyncEmail, teamSyncPassword)
+
+      if (!result.success) {
+        setTeamSyncError(result.error || 'Authentication failed')
+        return
+      }
+
+      // 2. Provision workspace
+      const existingWorkspaces = await window.electronAPI.cloudWorkspaceList()
+      let cloudWorkspaceId: string
+      let wsName: string
+
+      if (existingWorkspaces.length > 0) {
+        cloudWorkspaceId = existingWorkspaces[0].id
+        wsName = existingWorkspaces[0].name
+      } else {
+        const createResult = await window.electronAPI.cloudWorkspaceCreate('My Workspace')
+        if (!createResult.success || !createResult.workspace) {
+          setTeamSyncError(createResult.error || 'Failed to create cloud workspace')
+          return
+        }
+        cloudWorkspaceId = createResult.workspace.id
+        wsName = createResult.workspace.name
+      }
+
+      // 3. Link to current workspace
+      if (activeWorkspaceId) {
+        await window.electronAPI.cloudWorkspaceLinkLocal(activeWorkspaceId, cloudWorkspaceId)
+      }
+
+      // 4. Update UI state
+      const authState = await window.electronAPI.supabaseGetUser()
+      setCloudAuthState(authState)
+      setCloudWorkspaceName(wsName)
+      setTeamSyncEmail('')
+      setTeamSyncPassword('')
+    } catch (err) {
+      setTeamSyncError(err instanceof Error ? err.message : 'Failed')
+    } finally {
+      setTeamSyncLoading(false)
+    }
+  }, [teamSyncEmail, teamSyncPassword, teamSyncMode, activeWorkspaceId])
+
+  const handleTeamSyncSignOut = useCallback(async () => {
+    setTeamSyncLoading(true)
+    try {
+      await window.electronAPI.supabaseSignOut()
+      setCloudAuthState(null)
+      setCloudWorkspaceName(null)
+    } finally {
+      setTeamSyncLoading(false)
+    }
+  }, [])
 
   // Show empty state if no workspace is active
   if (!activeWorkspaceId) {
@@ -494,6 +586,82 @@ export default function WorkspaceSettingsPage() {
               ) : (
                 <p className="text-sm text-muted-foreground">No sources configured in this workspace.</p>
               )}
+            </SettingsSection>
+
+            {/* Team Sync */}
+            <SettingsSection title="Team Sync" description="Sync data across devices with your team.">
+              <SettingsCard>
+                {cloudAuthState?.authenticated ? (
+                  <>
+                    <SettingsRow
+                      label="Account"
+                      description={cloudAuthState.user?.email || 'Signed in'}
+                      action={
+                        <button
+                          type="button"
+                          onClick={handleTeamSyncSignOut}
+                          disabled={teamSyncLoading}
+                          className="inline-flex items-center h-8 px-3 text-sm rounded-lg bg-background shadow-minimal hover:bg-foreground/[0.02] transition-colors text-foreground/60 hover:text-foreground"
+                        >
+                          Sign Out
+                        </button>
+                      }
+                    />
+                    {cloudWorkspaceName && (
+                      <SettingsRow
+                        label="Cloud Workspace"
+                        description={cloudWorkspaceName}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <div className="px-4 py-4 space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Sign in or create an account to enable cloud sync.
+                    </p>
+                    <input
+                      type="email"
+                      placeholder="Email"
+                      value={teamSyncEmail}
+                      onChange={e => setTeamSyncEmail(e.target.value)}
+                      disabled={teamSyncLoading}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50"
+                    />
+                    <input
+                      type="password"
+                      placeholder="Password"
+                      value={teamSyncPassword}
+                      onChange={e => setTeamSyncPassword(e.target.value)}
+                      disabled={teamSyncLoading}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50"
+                      onKeyDown={e => e.key === 'Enter' && handleTeamSyncAuth()}
+                    />
+                    {teamSyncError && (
+                      <p className="text-sm text-destructive">{teamSyncError}</p>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTeamSyncMode(m => m === 'signin' ? 'signup' : 'signin')
+                          setTeamSyncError(undefined)
+                        }}
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {teamSyncMode === 'signin' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleTeamSyncAuth}
+                        disabled={teamSyncLoading || !teamSyncEmail.trim() || !teamSyncPassword.trim()}
+                        className="inline-flex items-center h-8 px-3 text-sm rounded-lg bg-background shadow-minimal hover:bg-foreground/[0.02] transition-colors disabled:opacity-50"
+                      >
+                        {teamSyncLoading ? 'Loading...' : teamSyncMode === 'signup' ? 'Sign Up' : 'Sign In'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </SettingsCard>
             </SettingsSection>
 
             {/* Advanced */}

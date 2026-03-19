@@ -7,6 +7,10 @@ export class SupabaseAuthService {
   private configured = false
   private initialized = false
 
+  getClient(): SupabaseClient | null {
+    return this.supabase
+  }
+
   private getSupabaseConfig(): { url: string; anonKey: string } | null {
     const url = process.env.SUPABASE_URL?.trim()
     const anonKey = process.env.SUPABASE_ANON_KEY?.trim()
@@ -82,6 +86,21 @@ export class SupabaseAuthService {
 
     if (!data.session) {
       return { success: false, error: 'No active session returned' }
+    }
+
+    await this.persistSession(data.session)
+    return { success: true }
+  }
+
+  async signUp(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+    await this.ensureInitialized()
+    if (!this.configured || !this.supabase) return { success: false, error: 'Supabase auth is not configured' }
+
+    const { data, error } = await this.supabase.auth.signUp({ email, password })
+    if (error) return { success: false, error: error.message }
+
+    if (!data.session) {
+      return { success: false, error: 'No active session returned — email confirmation may be required' }
     }
 
     await this.persistSession(data.session)
