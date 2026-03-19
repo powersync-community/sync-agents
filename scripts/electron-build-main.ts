@@ -56,6 +56,7 @@ function getBuildDefines(): string[] {
     "CLOUD_SYNC_EXPERIMENTAL",
     "SUPABASE_URL",
     "SUPABASE_ANON_KEY",
+    "POWERSYNC_URL",
   ];
 
   return definedVars.map((varName) => {

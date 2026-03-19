@@ -108,6 +108,7 @@ export interface SyncStatus {
   configured: boolean
   connected: boolean
   syncing: boolean
+  hasSynced: boolean
   lastSyncedAt?: number
   error?: string
 }

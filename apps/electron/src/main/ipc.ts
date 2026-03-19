@@ -23,7 +23,7 @@ import { MarkItDown } from 'markitdown-js'
 import { isUsableGitBashPath, validateGitBashPath } from './git-bash'
 import { SupabaseAuthService } from './cloud/supabase-auth'
 import { PowerSyncService } from './cloud/powersync-service'
-import { ensureCloudWorkspaceStoragePaths } from './cloud/workspace-storage'
+import { ensureCloudWorkspaceStoragePaths, getCloudWorkspaceStoragePaths } from './cloud/workspace-storage'
 
 /**
  * Sanitizes a filename to prevent path traversal and filesystem issues.
@@ -462,7 +462,29 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
   const supabaseAuthService = new SupabaseAuthService()
   const powerSyncService = new PowerSyncService()
   if (cloudExperimentalEnabled) {
-    void supabaseAuthService.initialize()
+    void supabaseAuthService.initialize().then(async () => {
+      const authState = await supabaseAuthService.getAuthState()
+      if (authState.authenticated) {
+        const config = loadStoredConfig()
+        const cloudWs = config?.workspaces.find(w => w.storageMode === 'cloud_canonical')
+        if (cloudWs) {
+          const supabase = supabaseAuthService.getClient()
+          const powersyncUrl = process.env.POWERSYNC_URL || 'http://127.0.0.1:8080'
+          if (supabase) {
+            const paths = getCloudWorkspaceStoragePaths(cloudWs.rootPath)
+            try {
+              await powerSyncService.connect({
+                dbPath: join(paths.dbDir, 'powersync.db'),
+                supabaseClient: supabase,
+                powersyncUrl,
+              })
+            } catch (error) {
+              console.error('[PowerSync] Auto-connect failed:', error)
+            }
+          }
+        }
+      }
+    })
   }
 
   // Get all sessions for the calling window's workspace
@@ -1602,11 +1624,27 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     return manager.checkHealth()
   })
 
+  // Helper: connect PowerSync for the active cloud-linked workspace
+  async function connectPowerSyncForCloudWorkspace(): Promise<void> {
+    const config = loadStoredConfig()
+    const cloudWs = config?.workspaces.find(w => w.storageMode === 'cloud_canonical')
+    if (!cloudWs) return
+    const supabase = supabaseAuthService.getClient()
+    const powersyncUrl = process.env.POWERSYNC_URL || 'http://127.0.0.1:8080'
+    if (!supabase) return
+    const paths = getCloudWorkspaceStoragePaths(cloudWs.rootPath)
+    await powerSyncService.connect({
+      dbPath: join(paths.dbDir, 'powersync.db'),
+      supabaseClient: supabase,
+      powersyncUrl,
+    })
+  }
+
   ipcMain.handle(IPC_CHANNELS.SUPABASE_SIGN_IN, async (_event, email: string, password: string) => {
     if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
     const result = await supabaseAuthService.signIn(email, password)
     if (result.success) {
-      await powerSyncService.connect()
+      await connectPowerSyncForCloudWorkspace()
     }
     return result
   })
@@ -1615,7 +1653,7 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
     const result = await supabaseAuthService.signUp(email, password)
     if (result.success) {
-      await powerSyncService.connect()
+      await connectPowerSyncForCloudWorkspace()
     }
     return result
   })
@@ -1624,7 +1662,7 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
     const result = await supabaseAuthService.signOut()
     if (result.success) {
-      await powerSyncService.disconnect()
+      await powerSyncService.disconnectAndClear()
     }
     return result
   })
