@@ -1662,7 +1662,7 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
     const result = await supabaseAuthService.signUp(email, password)
     if (result.success) {
-      await powerSyncService.connect()
+      await connectPowerSyncForCloudWorkspace()
     }
     return result
   })
