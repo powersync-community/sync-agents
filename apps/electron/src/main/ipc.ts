@@ -23,6 +23,7 @@ import { MarkItDown } from 'markitdown-js'
 import { isUsableGitBashPath, validateGitBashPath } from './git-bash'
 import { SupabaseAuthService } from './cloud/supabase-auth'
 import { PowerSyncService } from './cloud/powersync-service'
+import { ensureCloudWorkspaceStoragePaths, getCloudWorkspaceStoragePaths } from './cloud/workspace-storage'
 
 /**
  * Sanitizes a filename to prevent path traversal and filesystem issues.
@@ -461,7 +462,29 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
   const supabaseAuthService = new SupabaseAuthService()
   const powerSyncService = new PowerSyncService()
   if (cloudExperimentalEnabled) {
-    void supabaseAuthService.initialize()
+    void supabaseAuthService.initialize().then(async () => {
+      const authState = await supabaseAuthService.getAuthState()
+      if (authState.authenticated) {
+        const config = loadStoredConfig()
+        const cloudWs = config?.workspaces.find(w => w.storageMode === 'cloud_canonical')
+        if (cloudWs) {
+          const supabase = supabaseAuthService.getClient()
+          const powersyncUrl = process.env.POWERSYNC_URL || 'http://127.0.0.1:8080'
+          if (supabase) {
+            const paths = getCloudWorkspaceStoragePaths(cloudWs.rootPath)
+            try {
+              await powerSyncService.connect({
+                dbPath: join(paths.dbDir, 'powersync.db'),
+                supabaseClient: supabase,
+                powersyncUrl,
+              })
+            } catch (error) {
+              console.error('[PowerSync] Auto-connect failed:', error)
+            }
+          }
+        }
+      }
+    })
   }
 
   // Get all sessions for the calling window's workspace
@@ -1601,11 +1624,36 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     return manager.checkHealth()
   })
 
+  // Helper: connect PowerSync for the active cloud-linked workspace
+  async function connectPowerSyncForCloudWorkspace(): Promise<void> {
+    const config = loadStoredConfig()
+    const cloudWs = config?.workspaces.find(w => w.storageMode === 'cloud_canonical')
+    if (!cloudWs) return
+    const supabase = supabaseAuthService.getClient()
+    const powersyncUrl = process.env.POWERSYNC_URL || 'http://127.0.0.1:8080'
+    if (!supabase) return
+    const paths = getCloudWorkspaceStoragePaths(cloudWs.rootPath)
+    await powerSyncService.connect({
+      dbPath: join(paths.dbDir, 'powersync.db'),
+      supabaseClient: supabase,
+      powersyncUrl,
+    })
+  }
+
   ipcMain.handle(IPC_CHANNELS.SUPABASE_SIGN_IN, async (_event, email: string, password: string) => {
     if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
     const result = await supabaseAuthService.signIn(email, password)
     if (result.success) {
-      await powerSyncService.connect()
+      await connectPowerSyncForCloudWorkspace()
+    }
+    return result
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SUPABASE_SIGN_UP, async (_event, email: string, password: string) => {
+    if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
+    const result = await supabaseAuthService.signUp(email, password)
+    if (result.success) {
+      await connectPowerSyncForCloudWorkspace()
     }
     return result
   })
@@ -1623,7 +1671,7 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
     if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
     const result = await supabaseAuthService.signOut()
     if (result.success) {
-      await powerSyncService.disconnect()
+      await powerSyncService.disconnectAndClear()
     }
     return result
   })
@@ -1642,17 +1690,94 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
 
   ipcMain.handle(IPC_CHANNELS.CLOUD_WORKSPACE_LIST, async () => {
     if (!cloudExperimentalEnabled) return []
-    return []
+
+    const authState = await supabaseAuthService.getAuthState()
+    if (!authState.authenticated || !authState.user) return []
+
+    const supabase = supabaseAuthService.getClient()
+    if (!supabase) return []
+
+    const { data, error } = await supabase
+      .from('workspace_members')
+      .select('role, cloud_workspaces(id, name, created_at)')
+      .eq('user_id', authState.user.id)
+
+    if (error || !data) return []
+
+    return data.map((row: any) => ({
+      id: row.cloud_workspaces.id,
+      name: row.cloud_workspaces.name,
+      createdAt: row.cloud_workspaces.created_at,
+      role: row.role,
+    }))
   })
 
-  ipcMain.handle(IPC_CHANNELS.CLOUD_WORKSPACE_CREATE, async (_event, _name: string) => {
+  ipcMain.handle(IPC_CHANNELS.CLOUD_WORKSPACE_CREATE, async (_event, name: string) => {
     if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
-    return { success: false, error: 'Not yet implemented' }
+
+    const authState = await supabaseAuthService.getAuthState()
+    if (!authState.authenticated || !authState.user) {
+      return { success: false, error: 'Not authenticated' }
+    }
+
+    const supabase = supabaseAuthService.getClient()
+    if (!supabase) return { success: false, error: 'Supabase client not available' }
+
+    const { data: workspace, error: createError } = await supabase
+      .from('cloud_workspaces')
+      .insert({ name, created_by: authState.user.id })
+      .select()
+      .single()
+
+    if (createError) return { success: false, error: createError.message }
+
+    const { error: memberError } = await supabase
+      .from('workspace_members')
+      .insert({
+        cloud_workspace_id: workspace.id,
+        user_id: authState.user.id,
+        role: 'owner',
+      })
+
+    if (memberError) {
+      await supabase.from('cloud_workspaces').delete().eq('id', workspace.id)
+      return { success: false, error: memberError.message }
+    }
+
+    return {
+      success: true,
+      workspace: {
+        id: workspace.id,
+        name: workspace.name,
+        createdAt: workspace.created_at,
+        role: 'owner',
+      },
+    }
   })
 
-  ipcMain.handle(IPC_CHANNELS.CLOUD_WORKSPACE_LINK_LOCAL, async (_event, _localWorkspaceId: string, _cloudWorkspaceId: string) => {
+  ipcMain.handle(IPC_CHANNELS.CLOUD_WORKSPACE_LINK_LOCAL, async (_event, localWorkspaceId: string, cloudWorkspaceId: string) => {
     if (!cloudExperimentalEnabled) return { success: false, error: cloudDisabledError }
-    return { success: false, error: 'Not yet implemented' }
+
+    const config = loadStoredConfig()
+    if (!config) return { success: false, error: 'No config found' }
+
+    const workspace = config.workspaces.find((w: any) => w.id === localWorkspaceId)
+    if (!workspace) return { success: false, error: `Workspace ${localWorkspaceId} not found` }
+
+    await ensureCloudWorkspaceStoragePaths(workspace.rootPath)
+
+    workspace.storageMode = 'cloud_canonical'
+    workspace.cloudWorkspaceId = cloudWorkspaceId
+    saveConfig(config)
+
+    return {
+      success: true,
+      link: {
+        localWorkspaceId,
+        cloudWorkspaceId,
+        storageMode: 'cloud_canonical' as const,
+      },
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.SYNC_GET_STATUS, async () => {

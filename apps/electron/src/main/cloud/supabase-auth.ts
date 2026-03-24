@@ -7,6 +7,10 @@ export class SupabaseAuthService {
   private configured = false
   private initialized = false
 
+  getClient(): SupabaseClient | null {
+    return this.supabase
+  }
+
   private getSupabaseConfig(): { url: string; anonKey: string } | null {
     const url = process.env.SUPABASE_URL?.trim()
     const anonKey = process.env.SUPABASE_ANON_KEY?.trim()
