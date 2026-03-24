@@ -20,6 +20,11 @@ const chat_sessions = new Table({
   archived: column.integer, // boolean stored as 0/1
   created_at: column.text,
   updated_at: column.text,
+  metadata: column.text, // JSON string of synced session metadata
+  preview: column.text,
+  message_count: column.integer,
+  last_message_at: column.text,
+  last_message_role: column.text,
 }, {
   indexes: {
     by_workspace: ['cloud_workspace_id'],

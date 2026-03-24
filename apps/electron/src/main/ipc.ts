@@ -462,6 +462,7 @@ export function registerIpcHandlers(sessionManager: SessionManager, windowManage
   const supabaseAuthService = new SupabaseAuthService()
   const powerSyncService = new PowerSyncService()
   if (cloudExperimentalEnabled) {
+    sessionManager.setCloudServices({ powerSyncService, supabaseAuthService })
     void supabaseAuthService.initialize().then(async () => {
       const authState = await supabaseAuthService.getAuthState()
       if (authState.authenticated) {
