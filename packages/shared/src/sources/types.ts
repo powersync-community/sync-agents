@@ -29,7 +29,7 @@ export type ApiAuthType = 'bearer' | 'header' | 'query' | 'basic' | 'oauth' | 'n
 /**
  * Google service types for OAuth scope selection
  */
-export type GoogleService = 'gmail' | 'calendar' | 'drive' | 'docs' | 'sheets';
+export type GoogleService = 'gmail' | 'calendar' | 'drive' | 'docs' | 'sheets' | 'youtube' | 'searchconsole';
 
 /**
  * Slack service types for OAuth scope selection
@@ -66,6 +66,8 @@ export function inferGoogleServiceFromUrl(baseUrl: string | undefined): GoogleSe
   if (hostname === 'gmail.googleapis.com') return 'gmail';
   if (hostname === 'docs.googleapis.com') return 'docs';
   if (hostname === 'sheets.googleapis.com') return 'sheets';
+  if (hostname === 'youtube.googleapis.com') return 'youtube';
+  if (hostname === 'searchconsole.googleapis.com' || hostname === 'webmasters.googleapis.com') return 'searchconsole';
 
   // Fallback: check path patterns only on googleapis.com domains
   if (hostname === 'www.googleapis.com' || hostname === 'googleapis.com') {
@@ -74,6 +76,8 @@ export function inferGoogleServiceFromUrl(baseUrl: string | undefined): GoogleSe
     if (pathname.startsWith('/gmail/')) return 'gmail';
     if (pathname.startsWith('/v1/documents') || pathname.startsWith('/documents/')) return 'docs';
     if (pathname.startsWith('/v4/spreadsheets') || pathname.startsWith('/spreadsheets/')) return 'sheets';
+    if (pathname.startsWith('/youtube/')) return 'youtube';
+    if (pathname.startsWith('/webmasters/')) return 'searchconsole';
   }
 
   return undefined;
@@ -249,6 +253,20 @@ export interface McpSourceConfig {
    * Environment variables for the spawned process.
    */
   env?: Record<string, string>;
+
+  // === HTTP/SSE custom headers ===
+  /**
+   * Custom headers to include in every MCP request.
+   * Auth headers (e.g. Authorization) are merged on top when authType is set.
+   */
+  headers?: Record<string, string>;
+
+  /**
+   * Header names for credential-store auth (e.g., ["X-API-Key"]).
+   * Values are stored as JSON in the credential store, same as API multi-header auth.
+   * Precedence: static headers < credential-store headerNames < Authorization bearer.
+   */
+  headerNames?: string[];
 }
 
 /**
@@ -310,55 +328,18 @@ export interface LocalSourceConfig {
 export type SourceConnectionStatus = 'connected' | 'needs_auth' | 'failed' | 'untested' | 'local_disabled';
 
 // ============================================================================
-// Source Brand & Action Cards
+// Source Brand
 // ============================================================================
 
 /**
- * Brand theming for a source's UI elements (card headers, buttons).
+ * Brand theming for a source's UI elements.
  * Uses the EntityColor system for light/dark mode support.
  */
 export interface SourceBrand {
-  /** Primary brand color — used for card header tint and primary action buttons.
+  /** Primary brand color — used for source-branded UI elements.
    *  Can be a system color name ("accent", "info") or custom { light, dark } values.
    *  Defaults to "accent" if not set. */
   color?: import('../colors/types').EntityColor;
-}
-
-/**
- * Handler for an action card button — defines what happens on click.
- */
-export type SourceCardActionHandler =
-  | { type: 'api'; method: string; path: string }
-  | { type: 'mcp'; tool: string }
-  | { type: 'copy' }
-  | { type: 'open'; urlTemplate: string };
-
-/**
- * An action button in a source card footer.
- */
-export interface SourceCardAction {
-  /** Button label (e.g., "Send Email", "Post to #channel") */
-  label: string;
-  /** 'primary' uses brand color, 'secondary' uses outline */
-  variant: 'primary' | 'secondary';
-  /** What happens on click */
-  handler: SourceCardActionHandler;
-}
-
-/**
- * Defines a card type that a source can render in AI responses.
- * Sources declare these in config.json so the UI knows how to present
- * structured content with source-branded styling and action buttons.
- */
-export interface SourceCardDefinition {
-  /** Card type identifier (e.g., "email", "message", "event", "payment") */
-  type: string;
-  /** Human-readable label for the card header (e.g., "Email Draft") */
-  label: string;
-  /** Lucide icon name for the header (e.g., "mail", "hash", "calendar") */
-  icon: string;
-  /** Action buttons shown in the card footer */
-  actions: SourceCardAction[];
 }
 
 // ============================================================================
@@ -394,11 +375,8 @@ export interface FolderSourceConfig {
   // If not set, extracted from guide.md first paragraph
   tagline?: string;
 
-  // Brand theming for this source's UI elements (card headers, buttons)
+  // Brand theming for this source's UI elements
   brand?: SourceBrand;
-
-  // Action card definitions this source supports
-  cards?: SourceCardDefinition[];
 
   // Status tracking
   isAuthenticated?: boolean;

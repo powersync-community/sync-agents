@@ -6,6 +6,7 @@
  * and lifecycle management.
  */
 import { describe, it, expect, beforeEach } from 'bun:test';
+import { AbortReason } from '../backend/types.ts';
 import {
   TestAgent,
   createMockBackendConfig,
@@ -33,7 +34,7 @@ describe('BaseAgent', () => {
 
   describe('Thinking Level Configuration', () => {
     it('should initialize with config thinking level', () => {
-      expect(agent.getThinkingLevel()).toBe('think');
+      expect(agent.getThinkingLevel()).toBe('medium');
     });
 
     it('should allow setting thinking level', () => {
@@ -41,17 +42,6 @@ describe('BaseAgent', () => {
       expect(agent.getThinkingLevel()).toBe('max');
     });
 
-    it('should track ultrathink override', () => {
-      // Set up debug callback to verify the override is set
-      let debugMessage = '';
-      agent.onDebug = (msg) => { debugMessage = msg; };
-
-      agent.setUltrathinkOverride(true);
-      expect(debugMessage).toContain('Ultrathink override: ENABLED');
-
-      agent.setUltrathinkOverride(false);
-      expect(debugMessage).toContain('Ultrathink override: disabled');
-    });
   });
 
   describe('Permission Mode', () => {
@@ -119,8 +109,8 @@ describe('BaseAgent', () => {
       expect(agent.getActiveSourceSlugs()).toEqual([]);
     });
 
-    it('should track source servers', () => {
-      agent.setSourceServers(
+    it('should track source servers', async () => {
+      await agent.setSourceServers(
         { 'source-1': { type: 'http', url: 'http://test' } },
         { 'source-2': {} },
         ['source-1', 'source-2']
@@ -130,8 +120,8 @@ describe('BaseAgent', () => {
       expect(agent.getActiveSourceSlugs()).toContain('source-2');
     });
 
-    it('should check if source is active', () => {
-      agent.setSourceServers(
+    it('should check if source is active', async () => {
+      await agent.setSourceServers(
         { 'active-source': { type: 'http', url: 'http://test' } },
         {},
         ['active-source']
@@ -199,6 +189,12 @@ describe('BaseAgent', () => {
       await agent.abort('test reason');
       expect(agent.abortCalls).toHaveLength(1);
       expect(agent.abortCalls[0]?.reason).toBe('test reason');
+    });
+
+    it('should delegate handoff interrupts to forceAbort by default', () => {
+      agent.interruptForHandoff(AbortReason.AuthRequest);
+      expect(agent.forceAbortCalls).toHaveLength(1);
+      expect(agent.forceAbortCalls[0]?.reason).toBe(AbortReason.AuthRequest);
     });
 
     it('should track respondToPermission calls', () => {

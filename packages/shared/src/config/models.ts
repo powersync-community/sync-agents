@@ -9,6 +9,36 @@
  * 2. The convenience exports (ANTHROPIC_MODELS, OPENAI_MODELS) auto-update
  * 3. Update llm-connections.ts if adding a new built-in connection
  */
+// Bedrock-native → bare Anthropic ID reverse mapping.
+// Duplicated from llm-connections.ts to avoid circular imports (llm-connections imports models).
+// Must stay in sync with BEDROCK_MODEL_MAP in llm-connections.ts.
+const BEDROCK_TO_BARE: Record<string, string> = {
+  // US inference profile IDs (primary)
+  'us.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
+  'us.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
+  'us.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'us.anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
+  'us.anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
+  // EU inference profile IDs
+  'eu.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
+  'eu.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
+  'eu.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'eu.anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
+  'eu.anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
+  // Global inference profile IDs
+  'global.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
+  'global.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
+  'global.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  // Base IDs (no region prefix)
+  'anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
+  'anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
+  'anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
+  'anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
+};
+function bedrockToBarId(modelId: string): string {
+  return BEDROCK_TO_BARE[modelId] ?? modelId;
+}
 
 // ============================================
 // TYPES
@@ -17,16 +47,16 @@
 /**
  * Provider identifier for AI backends.
  */
-export type ModelProvider = 'anthropic' | 'openai' | 'copilot';
+export type ModelProvider = 'anthropic' | 'pi';
 
 /**
  * Full model definition with capabilities and costs.
  * Used throughout the application for model selection and display.
  */
 export interface ModelDefinition {
-  /** Model identifier (e.g., 'claude-sonnet-4-5-20250929', 'gpt-5.3-codex') */
+  /** Model identifier (e.g., 'claude-sonnet-4-6', 'gpt-5.3-codex') */
   id: string;
-  /** Human-readable name (e.g., 'Sonnet 4.5', 'Codex') */
+  /** Human-readable name (e.g., 'Sonnet 4.6', 'Codex') */
   name: string;
   /** Short display name for compact UI (e.g., 'Sonnet', 'Codex') */
   shortName: string;
@@ -58,19 +88,11 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     shortName: 'Opus',
     description: 'Most capable for complex work',
     provider: 'anthropic',
-    contextWindow: 200_000,
+    contextWindow: 1_000_000,
   },
   {
-    id: 'claude-opus-4-5-20251101',
-    name: 'Opus 4.5',
-    shortName: 'Opus 4.5',
-    description: 'Previous generation flagship model',
-    provider: 'anthropic',
-    contextWindow: 200_000,
-  },
-  {
-    id: 'claude-sonnet-4-5-20250929',
-    name: 'Sonnet 4.5',
+    id: 'claude-sonnet-4-6',
+    name: 'Sonnet 4.6',
     shortName: 'Sonnet',
     description: 'Best for everyday tasks',
     provider: 'anthropic',
@@ -86,34 +108,10 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
   },
 
   // ----------------------------------------
-  // OpenAI Codex Models — FALLBACK entries only.
-  // At runtime, models are discovered dynamically via model/list from the Codex app-server.
-  // See fetchAndStoreCodexModels() in ipc.ts. These entries are used when:
-  //   - App-server is not running (e.g., first launch before auth)
-  //   - model/list call fails (network, timeout)
-  //   - Offline mode
-  // ----------------------------------------
-  {
-    id: 'gpt-5.3-codex',
-    name: 'GPT-5.3 Codex',
-    shortName: 'Codex',
-    description: 'OpenAI reasoning model',
-    provider: 'openai',
-    contextWindow: 256_000,
-  },
-  {
-    id: 'gpt-5.1-codex-mini',
-    name: 'GPT-5.1 Codex Mini',
-    shortName: 'Codex Mini',
-    description: 'Fast OpenAI model',
-    provider: 'openai',
-    contextWindow: 128_000,
-  },
-
-  // ----------------------------------------
-  // GitHub Copilot Models (via Copilot SDK)
-  // No hardcoded entries — models are discovered at runtime via client.listModels()
-  // and stored on the connection. See fetchAndStoreCopilotModels() in ipc.ts.
+  // Pi Models
+  // No hardcoded entries — models are discovered dynamically:
+  //   - Pi: getModels(provider) from @mariozechner/pi-ai SDK
+  // See ModelRefreshService in apps/electron/src/main/model-fetchers/
   // ----------------------------------------
 ];
 
@@ -131,11 +129,6 @@ export function getModelsByProvider(provider: ModelProvider): ModelDefinition[] 
 /** All Anthropic Claude models */
 export const ANTHROPIC_MODELS = getModelsByProvider('anthropic');
 
-/** All OpenAI/Codex models */
-export const OPENAI_MODELS = getModelsByProvider('openai');
-
-/** All GitHub Copilot models */
-export const COPILOT_MODELS = getModelsByProvider('copilot');
 
 /**
  * Legacy compatibility export.
@@ -168,11 +161,6 @@ export function getModelIdByShortName(shortName: string): string {
 /** Default model for Anthropic connections (used when creating/backfilling connections) */
 export const DEFAULT_MODEL = getModelIdByShortName('Opus');
 
-/** Default model for Codex/OpenAI connections (used when creating/backfilling connections) */
-export const DEFAULT_CODEX_MODEL = getModelIdByShortName('Codex');
-
-/** Default model for Copilot connections — no hardcoded default; models come from listModels() */
-export const DEFAULT_COPILOT_MODEL: string | undefined = undefined;
 
 // ============================================
 // UTILITY MODELS
@@ -196,9 +184,12 @@ export function getDefaultSummarizationModel(): string {
 
 /**
  * Get a model by ID from the registry.
+ * Also handles Bedrock-native IDs (e.g. "anthropic.claude-opus-4-6-v1")
+ * by reverse-mapping to the bare Anthropic ID for lookup.
  */
 export function getModelById(modelId: string): ModelDefinition | undefined {
-  return MODEL_REGISTRY.find(m => m.id === modelId);
+  return MODEL_REGISTRY.find(m => m.id === modelId)
+    ?? MODEL_REGISTRY.find(m => m.id === bedrockToBarId(modelId));
 }
 
 /**
@@ -207,9 +198,10 @@ export function getModelById(modelId: string): ModelDefinition | undefined {
 export function getModelDisplayName(modelId: string): string {
   const model = getModelById(modelId);
   if (model) return model.name;
-  // Fallback: strip prefix and date suffix, format nicely
+  // Fallback: normalize Bedrock-native IDs, then strip prefix and date suffix
   // e.g., "claude-opus-4-5-20251101" → "Opus 4.5"
-  const stripped = modelId
+  const normalized = bedrockToBarId(modelId);
+  const stripped = normalized
     .replace('claude-', '')
     .replace(/-\d{8}$/, '');  // Remove date suffix
   // Split on dashes, capitalize first part, join version parts with dots
@@ -231,9 +223,15 @@ export function getModelShortName(modelId: string): string {
   if (modelId.includes('/')) {
     return modelId.split('/').pop() || modelId;
   }
-  // Fallback: strip claude- prefix and date suffix, then capitalize
-  const stripped = modelId.replace('claude-', '').replace(/-[\d.-]+$/, '');
-  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
+  // Fallback: normalize Bedrock-native IDs, then humanize (same logic as getModelDisplayName)
+  const normalized = bedrockToBarId(modelId);
+  const stripped = normalized.replace('claude-', '').replace(/-\d{8}$/, '');
+  const parts = stripped.split('-');
+  const first = parts[0];
+  if (!first) return modelId;
+  const name = first.charAt(0).toUpperCase() + first.slice(1);
+  const version = parts.slice(1).join('.');
+  return version ? `${name} ${version}` : name;
 }
 
 /**
@@ -252,30 +250,15 @@ export function isOpusModel(modelId: string): boolean {
 
 /**
  * Check if a model ID refers to a Claude model.
- * Handles both direct Anthropic IDs (e.g. "claude-sonnet-4-5-20250929")
- * and provider-prefixed IDs (e.g. "anthropic/claude-sonnet-4" via OpenRouter).
+ * Handles direct Anthropic IDs (e.g. "claude-sonnet-4-6"),
+ * provider-prefixed IDs (e.g. "anthropic/claude-sonnet-4" via OpenRouter),
+ * and Bedrock-native IDs (e.g. "anthropic.claude-opus-4-6-v1").
  */
 export function isClaudeModel(modelId: string): boolean {
   const lower = modelId.toLowerCase();
-  return lower.startsWith('claude-') || lower.includes('/claude');
+  return lower.startsWith('claude-') || lower.includes('/claude') || lower.includes('.claude');
 }
 
-/**
- * Check if a model ID refers to a Codex/OpenAI model.
- * Matches patterns like 'gpt-5.3-codex', 'gpt-5.1-codex-mini', etc.
- */
-export function isCodexModel(modelId: string): boolean {
-  const lower = modelId.toLowerCase();
-  return lower.includes('codex');
-}
-
-/**
- * Check if a model ID refers to a Copilot model.
- */
-export function isCopilotModel(modelId: string): boolean {
-  const model = getModelById(modelId);
-  return model?.provider === 'copilot';
-}
 
 /**
  * Get the provider for a model ID.
@@ -283,4 +266,3 @@ export function isCopilotModel(modelId: string): boolean {
 export function getModelProvider(modelId: string): ModelProvider | undefined {
   return getModelById(modelId)?.provider;
 }
-

@@ -14,7 +14,7 @@
 
 import type { SessionState, AgentEvent, ProcessResult } from './types'
 import { handleTextDelta, handleTextComplete } from './handlers/text'
-import { handleToolStart, handleToolResult, handleTaskBackgrounded, handleShellBackgrounded, handleTaskProgress } from './handlers/tool'
+import { handleToolStart, handleToolResult, handleTaskBackgrounded, handleShellBackgrounded, handleTaskProgress, handleTaskCompleted } from './handlers/tool'
 import {
   handleComplete,
   handleError,
@@ -41,6 +41,7 @@ import {
   handleSessionModelChanged,
   handleConnectionChanged,
   handleUserMessage,
+  handleMessageAnnotationsUpdated,
   handleSessionShared,
   handleSessionUnshared,
   handleAuthRequest,
@@ -98,6 +99,11 @@ export function processEvent(
       return { state: newState, effects: [] }
     }
 
+    case 'task_completed': {
+      const newState = handleTaskCompleted(state, event)
+      return { state: newState, effects: [] }
+    }
+
     case 'complete':
       return handleComplete(state, event)
 
@@ -127,6 +133,13 @@ export function processEvent(
 
     case 'working_directory_changed':
       return handleWorkingDirectoryChanged(state, event)
+
+    case 'working_directory_error':
+      // No state change — just emit a toast effect
+      return {
+        state: { ...state, session: { ...state.session } },
+        effects: [{ type: 'toast_error', message: event.error }],
+      }
 
     case 'permission_mode_changed':
       return handlePermissionModeChanged(state, event)
@@ -172,6 +185,9 @@ export function processEvent(
 
     case 'user_message':
       return handleUserMessage(state, event)
+
+    case 'message_annotations_updated':
+      return handleMessageAnnotationsUpdated(state, event)
 
     case 'session_shared':
       return handleSessionShared(state, event)

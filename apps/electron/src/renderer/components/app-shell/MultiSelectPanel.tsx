@@ -1,11 +1,8 @@
 /**
- * MultiSelectPanel - Empty state panel shown when multiple sessions are selected.
+ * MultiSelectPanel - Panel shown when multiple items are selected.
  *
- * Displays the selection count and provides batch action buttons for:
- * - Change status
- * - Set labels
- * - Archive selected sessions
- * - Clear selection
+ * Displays the selection count and optional batch action buttons.
+ * Used for sessions (with status/label/archive actions), sources, and skills.
  */
 
 import * as React from 'react'
@@ -20,8 +17,10 @@ import type { LabelConfig } from '@craft-agent/shared/labels'
 import { LabelMenuItems, StatusMenuItems } from './SessionMenuParts'
 
 export interface MultiSelectPanelProps {
-  /** Number of selected sessions */
+  /** Number of selected items */
   count: number
+  /** Entity type name for display (default: "Session") */
+  entityName?: string
   /** Available todo states */
   sessionStatuses?: SessionStatus[]
   /** Active status if all selected share the same state */
@@ -44,6 +43,7 @@ export interface MultiSelectPanelProps {
 
 export function MultiSelectPanel({
   count,
+  entityName = 'Session',
   sessionStatuses = [],
   activeStatusId,
   onSetStatus,
@@ -67,7 +67,7 @@ export function MultiSelectPanel({
           <span className="text-2xl font-semibold text-accent">{count}</span>
         </div>
         <h2 className="text-lg font-medium text-foreground">
-          {count} {count === 1 ? 'Session' : 'Sessions'} selected
+          {count} {entityName}{count !== 1 ? 's' : ''} selected
         </h2>
         <div className="text-sm text-foreground/50 flex flex-col items-center gap-1">
           <span>

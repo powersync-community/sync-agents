@@ -46,6 +46,8 @@ export interface TextCompleteEvent {
   parentToolUseId?: string
   /** Timestamp from main process for consistent ordering with session.jsonl */
   timestamp?: number
+  /** Authoritative message ID from main process for persistence/branching parity */
+  messageId?: string
 }
 
 /**
@@ -233,7 +235,9 @@ export interface InfoEvent {
 export interface InterruptedEvent {
   type: 'interrupted'
   sessionId: string
-  message: Message
+  message?: Message
+  /** Messages that were queued but not processed — should be restored to input field */
+  queuedMessages?: string[]
 }
 
 /**
@@ -277,12 +281,26 @@ export interface WorkingDirectoryChangedEvent {
 }
 
 /**
+ * Working directory error event - server rejected the path (cross-platform, not found, etc.)
+ */
+export interface WorkingDirectoryErrorEvent {
+  type: 'working_directory_error'
+  sessionId: string
+  error: string
+}
+
+/**
  * Permission mode changed event
  */
 export interface PermissionModeChangedEvent {
   type: 'permission_mode_changed'
   sessionId: string
   permissionMode: PermissionMode
+  previousPermissionMode?: PermissionMode
+  transitionDisplay?: string
+  modeVersion?: number
+  changedAt?: string
+  changedBy?: 'user' | 'system' | 'restore' | 'automation' | 'unknown'
 }
 
 /**
@@ -301,6 +319,7 @@ export interface LLMConnectionChangedEvent {
   type: 'connection_changed'
   sessionId: string
   connectionSlug: string
+  supportsBranching?: boolean
 }
 
 /**
@@ -348,6 +367,20 @@ export interface TaskProgressEvent {
 }
 
 /**
+ * Task completed event - background task finished execution
+ * Updates the tool message status and result when a background task completes.
+ */
+export interface TaskCompletedEvent {
+  type: 'task_completed'
+  sessionId: string
+  taskId: string
+  status: 'completed' | 'failed' | 'stopped'
+  outputFile?: string
+  summary?: string
+  turnId?: string
+}
+
+/**
  * User message event - backend confirmation of optimistic user message
  * Used for optimistic UI: frontend shows message immediately,
  * backend confirms/updates status via this event
@@ -359,6 +392,16 @@ export interface UserMessageEvent {
   status: 'accepted' | 'queued' | 'processing'
   /** Frontend's optimistic message ID for reliable matching */
   optimisticMessageId?: string
+}
+
+/**
+ * Message annotation update event
+ */
+export interface MessageAnnotationsUpdatedEvent {
+  type: 'message_annotations_updated'
+  sessionId: string
+  messageId: string
+  annotations: NonNullable<Message['annotations']>
 }
 
 /**
@@ -455,13 +498,16 @@ export type AgentEvent =
   | TitleRegeneratingEvent
   | AsyncOperationEvent
   | WorkingDirectoryChangedEvent
+  | WorkingDirectoryErrorEvent
   | PermissionModeChangedEvent
   | SessionModelChangedEvent
   | LLMConnectionChangedEvent
   | TaskBackgroundedEvent
   | ShellBackgroundedEvent
   | TaskProgressEvent
+  | TaskCompletedEvent
   | UserMessageEvent
+  | MessageAnnotationsUpdatedEvent
   | SessionSharedEvent
   | SessionUnsharedEvent
   | AuthRequestEvent
@@ -476,8 +522,10 @@ export type Effect =
   | { type: 'permission_request'; request: PermissionRequest }
   | { type: 'credential_request'; request: CredentialRequest }
   | { type: 'generate_title'; sessionId: string; userMessage: string }
-  | { type: 'permission_mode_changed'; sessionId: string; permissionMode: PermissionMode }
+  | { type: 'permission_mode_changed'; sessionId: string; permissionMode: PermissionMode; previousPermissionMode?: PermissionMode; transitionDisplay?: string; modeVersion?: number; changedAt?: string; changedBy?: 'user' | 'system' | 'restore' | 'automation' | 'unknown' }
   | { type: 'auto_retry'; sessionId: string; originalMessage: string; sourceSlug: string }
+  | { type: 'restore_input'; text: string }
+  | { type: 'toast_error'; message: string }
 
 /**
  * Result of processing an event

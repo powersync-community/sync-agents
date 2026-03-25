@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { LabelIcon } from './label-icon'
 import type { LabelConfig } from '@craft-agent/shared/labels'
 import { flattenLabels } from '@craft-agent/shared/labels'
-import type { SessionStatus } from '@/config/session-status-config'
+import { getStatusIconStyle, type SessionStatus } from '@/config/session-status-config'
 
 // ============================================================================
 // Types
@@ -276,6 +276,7 @@ export function InlineLabelMenu({
   return (
     <div
       ref={menuRef}
+      data-inline-menu
       className={cn('fixed z-dropdown', MENU_CONTAINER_STYLE, className)}
       style={{ left: Math.round(position.x) - 10, bottom: bottomPosition, minWidth: 200, maxWidth: 260 }}
     >
@@ -308,8 +309,6 @@ export function InlineLabelMenu({
                 {filteredStates_.map((state, index) => {
                   const isSelected = index === selectedIndex
                   const isActive = state.id === activeStateId
-                  // Apply status color to icon if the icon supports currentColor
-                  const applyColor = state.iconColorable
                   return (
                     <div
                       key={`state-${state.id}`}
@@ -328,7 +327,7 @@ export function InlineLabelMenu({
                       {/* State icon with resolved color */}
                       <span
                         className="shrink-0 flex items-center w-4 h-4 [&>svg]:w-full [&>svg]:h-full [&>img]:w-full [&>img]:h-full [&>span]:text-sm"
-                        style={applyColor ? { color: state.resolvedColor } : undefined}
+                        style={getStatusIconStyle(state)}
                       >
                         {state.icon}
                       </span>

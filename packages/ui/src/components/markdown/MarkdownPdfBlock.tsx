@@ -77,9 +77,10 @@ class PdfBlockErrorBoundary extends React.Component<
 export interface MarkdownPdfBlockProps {
   code: string
   className?: string
+  onCreateRegionAnnotation?: (region: { page?: number; x: number; y: number; w: number; h: number; unit: 'pixel' | 'percent' }) => void
 }
 
-export function MarkdownPdfBlock({ code, className }: MarkdownPdfBlockProps) {
+export function MarkdownPdfBlock({ code, className, onCreateRegionAnnotation: _onCreateRegionAnnotation }: MarkdownPdfBlockProps) {
   const { onReadFileBinary } = usePlatform()
 
   // Parse the JSON spec — supports single src or items array
@@ -227,7 +228,7 @@ export function MarkdownPdfBlock({ code, className }: MarkdownPdfBlockProps) {
               className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
               style={{
                 background: 'linear-gradient(to bottom, transparent, var(--muted))',
-                zIndex: 3,
+                zIndex: 'var(--z-local, 10)',
               }}
             />
           )}

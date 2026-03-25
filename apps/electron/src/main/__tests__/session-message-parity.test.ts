@@ -5,120 +5,11 @@
  * parentToolUseId passes through unconditionally, and the persistence
  * pipeline filters the correct message types.
  *
- * Mirrors sessions.ts logic inline (no Electron imports needed).
+ * Uses centralized core mappers (single source of truth, no Electron imports needed).
  */
 import { describe, it, expect, beforeEach } from 'bun:test'
+import { messageToStored, storedToMessage } from '@craft-agent/core'
 import type { Message, StoredMessage, MessageRole } from '@craft-agent/core'
-
-// ============================================================================
-// Mirror: messageToStored / storedToMessage from sessions.ts
-// Keep in sync with the real implementation — if these drift, tests still
-// catch divergence via the exhaustive key check below.
-// ============================================================================
-
-function messageToStored(msg: Message): StoredMessage {
-  return {
-    id: msg.id,
-    type: msg.role,
-    content: msg.content,
-    timestamp: msg.timestamp,
-    toolName: msg.toolName,
-    toolUseId: msg.toolUseId,
-    toolInput: msg.toolInput,
-    toolResult: msg.toolResult,
-    toolStatus: msg.toolStatus,
-    toolDuration: msg.toolDuration,
-    toolIntent: msg.toolIntent,
-    toolDisplayName: msg.toolDisplayName,
-    toolDisplayMeta: msg.toolDisplayMeta,
-    parentToolUseId: msg.parentToolUseId,
-    taskId: msg.taskId,
-    shellId: msg.shellId,
-    elapsedSeconds: msg.elapsedSeconds,
-    isBackground: msg.isBackground,
-    isError: msg.isError,
-    attachments: msg.attachments,
-    badges: msg.badges,
-    isIntermediate: msg.isIntermediate,
-    turnId: msg.turnId,
-    errorCode: msg.errorCode,
-    errorTitle: msg.errorTitle,
-    errorDetails: msg.errorDetails,
-    errorOriginal: msg.errorOriginal,
-    errorCanRetry: msg.errorCanRetry,
-    ultrathink: msg.ultrathink,
-    planPath: msg.planPath,
-    authRequestId: msg.authRequestId,
-    authRequestType: msg.authRequestType,
-    authSourceSlug: msg.authSourceSlug,
-    authSourceName: msg.authSourceName,
-    authStatus: msg.authStatus,
-    authCredentialMode: msg.authCredentialMode,
-    authHeaderName: msg.authHeaderName,
-    authHeaderNames: msg.authHeaderNames,
-    authLabels: msg.authLabels,
-    authDescription: msg.authDescription,
-    authHint: msg.authHint,
-    authSourceUrl: msg.authSourceUrl,
-    authPasswordRequired: msg.authPasswordRequired,
-    authError: msg.authError,
-    authEmail: msg.authEmail,
-    authWorkspace: msg.authWorkspace,
-    isQueued: msg.isQueued,
-  }
-}
-
-function storedToMessage(stored: StoredMessage): Message {
-  return {
-    id: stored.id,
-    role: stored.type,
-    content: stored.content,
-    timestamp: stored.timestamp ?? Date.now(),
-    toolName: stored.toolName,
-    toolUseId: stored.toolUseId,
-    toolInput: stored.toolInput,
-    toolResult: stored.toolResult,
-    toolStatus: stored.toolStatus,
-    toolDuration: stored.toolDuration,
-    toolIntent: stored.toolIntent,
-    toolDisplayName: stored.toolDisplayName,
-    toolDisplayMeta: stored.toolDisplayMeta,
-    parentToolUseId: stored.parentToolUseId,
-    taskId: stored.taskId,
-    shellId: stored.shellId,
-    elapsedSeconds: stored.elapsedSeconds,
-    isBackground: stored.isBackground,
-    isError: stored.isError,
-    attachments: stored.attachments,
-    badges: stored.badges,
-    isIntermediate: stored.isIntermediate,
-    turnId: stored.turnId,
-    errorCode: stored.errorCode,
-    errorTitle: stored.errorTitle,
-    errorDetails: stored.errorDetails,
-    errorOriginal: stored.errorOriginal,
-    errorCanRetry: stored.errorCanRetry,
-    ultrathink: stored.ultrathink,
-    planPath: stored.planPath,
-    authRequestId: stored.authRequestId,
-    authRequestType: stored.authRequestType,
-    authSourceSlug: stored.authSourceSlug,
-    authSourceName: stored.authSourceName,
-    authStatus: stored.authStatus,
-    authCredentialMode: stored.authCredentialMode,
-    authHeaderName: stored.authHeaderName,
-    authHeaderNames: stored.authHeaderNames,
-    authLabels: stored.authLabels,
-    authDescription: stored.authDescription,
-    authHint: stored.authHint,
-    authSourceUrl: stored.authSourceUrl,
-    authPasswordRequired: stored.authPasswordRequired,
-    authError: stored.authError,
-    authEmail: stored.authEmail,
-    authWorkspace: stored.authWorkspace,
-    isQueued: stored.isQueued,
-  }
-}
 
 // ============================================================================
 // Test Helpers
@@ -148,16 +39,31 @@ function createFullMessage(): Message {
     isError: false,
     attachments: [{ id: 'att-1', type: 'text', name: 'file.txt', mimeType: 'text/plain', size: 100, storedPath: '/path' }],
     badges: [{ type: 'source', label: 'Linear', rawText: '@linear', start: 0, end: 7 }],
+    annotations: [{
+      id: 'ann-1',
+      schemaVersion: 1,
+      createdAt: 1700000000100,
+      intent: 'highlight',
+      body: [{ type: 'highlight' }],
+      target: {
+        source: { sessionId: 'session-1', messageId: 'msg-full-test' },
+        selectors: [
+          { type: 'text-position', start: 0, end: 4 },
+          { type: 'text-quote', exact: 'Tool', prefix: '', suffix: ' output' },
+        ],
+      },
+      style: { color: 'yellow' },
+    }],
     isStreaming: false,
     isPending: false,
     isIntermediate: false,
     turnId: 'turn-abc',
+    infoLevel: 'warning',
     errorCode: 'network_error',
     errorTitle: 'Connection Failed',
     errorDetails: ['DNS lookup failed'],
     errorOriginal: 'ENOTFOUND',
     errorCanRetry: true,
-    ultrathink: true,
     planPath: '/plans/plan.md',
     authRequestId: 'auth-req-1',
     authRequestType: 'credential',
@@ -212,10 +118,9 @@ describe('messageToStored/storedToMessage round-trip', () => {
       'toolDuration', 'toolIntent', 'toolDisplayName', 'toolDisplayMeta',
       'parentToolUseId',
       'taskId', 'shellId', 'elapsedSeconds', 'isBackground',
-      'isError', 'attachments', 'badges',
-      'isIntermediate', 'turnId',
+      'isError', 'attachments', 'badges', 'annotations',
+      'isIntermediate', 'turnId', 'infoLevel',
       'errorCode', 'errorTitle', 'errorDetails', 'errorOriginal', 'errorCanRetry',
-      'ultrathink',
       'planPath',
       'authRequestId', 'authRequestType', 'authSourceSlug', 'authSourceName',
       'authStatus', 'authCredentialMode', 'authHeaderName', 'authHeaderNames',
@@ -255,14 +160,15 @@ describe('messageToStored/storedToMessage round-trip', () => {
     expect(restored.isError).toBe(original.isError)
     expect(restored.attachments).toEqual(original.attachments)
     expect(restored.badges).toEqual(original.badges)
+    expect(restored.annotations).toEqual(original.annotations)
     expect(restored.isIntermediate).toBe(original.isIntermediate)
     expect(restored.turnId).toBe(original.turnId)
+    expect(restored.infoLevel).toBe(original.infoLevel)
     expect(restored.errorCode).toBe(original.errorCode)
     expect(restored.errorTitle).toBe(original.errorTitle)
     expect(restored.errorDetails).toEqual(original.errorDetails)
     expect(restored.errorOriginal).toBe(original.errorOriginal)
     expect(restored.errorCanRetry).toBe(original.errorCanRetry)
-    expect(restored.ultrathink).toBe(original.ultrathink)
     expect(restored.planPath).toBe(original.planPath)
     expect(restored.authRequestId).toBe(original.authRequestId)
     expect(restored.authRequestType).toBe(original.authRequestType)
@@ -303,15 +209,14 @@ describe('messageToStored/storedToMessage round-trip', () => {
     // These are intentionally transient — NOT persisted
     expect(stored).not.toHaveProperty('isStreaming')
     expect(stored).not.toHaveProperty('isPending')
-    expect(stored).not.toHaveProperty('infoLevel')
 
-    // statusType IS persisted (for compaction_complete messages)
-    // but is on StoredMessage — check it's not on the output since
-    // createFullMessage doesn't set it
+    // infoLevel IS persisted for info-message severity restoration after reload
+    expect(stored.infoLevel).toBe(msg.infoLevel)
+
     const storedKeys = Object.keys(stored)
     expect(storedKeys).not.toContain('isStreaming')
     expect(storedKeys).not.toContain('isPending')
-    expect(storedKeys).not.toContain('infoLevel')
+    expect(storedKeys).toContain('infoLevel')
   })
 
   it('minimal message round-trips cleanly', () => {

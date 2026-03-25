@@ -6,6 +6,8 @@ import { Input } from "../ui/input"
 import { Button } from "../ui/button"
 import { AddWorkspaceContainer, AddWorkspaceStepHeader, AddWorkspaceSecondaryButton, AddWorkspacePrimaryButton } from "./primitives"
 import { AddWorkspace_RadioOption } from "./AddWorkspace_RadioOption"
+import { useDirectoryPicker } from "@/hooks/useDirectoryPicker"
+import { ServerDirectoryBrowser } from "@/components/ServerDirectoryBrowser"
 
 type LocationOption = 'default' | 'custom'
 
@@ -42,10 +44,10 @@ export function AddWorkspaceStep_CreateNew({
   }, [])
 
   const slug = slugify(name)
-  const defaultBasePath = homeDir ? `${homeDir}/.craft-agent/workspaces` : '~/.craft-agent/workspaces'
+  const defaultBasePath = homeDir ? `${homeDir}/.craft-agent/workspaces` : null
   const finalPath = locationOption === 'default'
-    ? `${defaultBasePath}/${slug}`
-    : customPath
+    ? (defaultBasePath && slug ? `${defaultBasePath}/${slug}` : null)
+    : customPath && slug
       ? `${customPath}/${slug}`
       : null
 
@@ -77,12 +79,17 @@ export function AddWorkspaceStep_CreateNew({
     return () => clearTimeout(timeout)
   }, [slug, locationOption, defaultBasePath, customPath])
 
-  const handleBrowse = useCallback(async () => {
-    const path = await window.electronAPI.openFolderDialog()
-    if (path) {
-      setCustomPath(path)
-    }
+  const handleFolderSelected = useCallback((path: string) => {
+    setCustomPath(path)
   }, [])
+
+  const {
+    pickDirectory,
+    showServerBrowser,
+    serverBrowserMode,
+    cancelServerBrowser,
+    confirmServerBrowser,
+  } = useDirectoryPicker(handleFolderSelected)
 
   const handleCreate = useCallback(async () => {
     if (!name.trim() || !finalPath || error) return
@@ -161,7 +168,7 @@ export function AddWorkspaceStep_CreateNew({
               <AddWorkspaceSecondaryButton
                 onClick={(e) => {
                   e.preventDefault()
-                  handleBrowse()
+                  pickDirectory()
                 }}
                 disabled={isCreating}
               >
@@ -184,6 +191,12 @@ export function AddWorkspaceStep_CreateNew({
           <p className="text-xs text-destructive">{submitError}</p>
         )}
       </div>
+      <ServerDirectoryBrowser
+        open={showServerBrowser}
+        mode={serverBrowserMode}
+        onSelect={confirmServerBrowser}
+        onCancel={cancelServerBrowser}
+      />
     </AddWorkspaceContainer>
   )
 }

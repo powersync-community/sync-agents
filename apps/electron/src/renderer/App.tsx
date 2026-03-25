@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import type { ThemeOverrides } from '@config/theme'
 import { useSetAtom, useStore, useAtomValue, useAtom } from 'jotai'
-import type { Session, Workspace, SessionEvent, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, SetupNeeds, SessionStatus, NewChatActionParams, ContentBadge, LlmConnectionWithStatus } from '../shared/types'
+import type { Session, Workspace, SessionEvent, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, SetupNeeds, SessionStatus, NewChatActionParams, ContentBadge, LlmConnectionWithStatus, PermissionModeState } from '../shared/types'
 import type { SessionOptions, SessionOptionUpdates } from './hooks/useSessionOptions'
 import { defaultSessionOptions, mergeSessionOptions } from './hooks/useSessionOptions'
 import { generateMessageId } from '../shared/types'
@@ -16,6 +16,7 @@ import { SplashScreen } from '@/components/SplashScreen'
 import { TooltipProvider } from '@craft-agent/ui'
 import { FocusProvider } from '@/context/FocusContext'
 import { ModalProvider } from '@/context/ModalContext'
+import { DismissibleLayerProvider } from '@/context/DismissibleLayerContext'
 import { useWindowCloseHandler } from '@/hooks/useWindowCloseHandler'
 import { useOnboarding } from '@/hooks/useOnboarding'
 import { useNotifications } from '@/hooks/useNotifications'
@@ -24,7 +25,9 @@ import { useUpdateChecker } from '@/hooks/useUpdateChecker'
 import { NavigationProvider } from '@/contexts/NavigationContext'
 import { navigate, routes } from './lib/navigate'
 import { stripMarkdown } from './utils/text'
+import { getSessionsToRefreshAfterStaleReconnect } from './lib/reconnect-recovery'
 import { extractWorkspaceSlugFromPath } from '@craft-agent/shared/utils/workspace-slug'
+import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels'
 import { initRendererPerf } from './lib/perf'
 import {
   initializeSessionsAtom,
@@ -34,6 +37,7 @@ import {
   sessionAtomFamily,
   sessionMetaMapAtom,
   sessionIdsAtom,
+  loadedSessionsAtom,
   backgroundTasksAtomFamily,
   extractSessionMeta,
   windowWorkspaceIdAtom,
@@ -53,7 +57,12 @@ import {
   JSONPreviewOverlay,
 } from '@craft-agent/ui'
 import { useLinkInterceptor, type FilePreviewState } from '@/hooks/useLinkInterceptor'
+import { useTransportConnectionState } from '@/hooks/useTransportConnectionState'
+import { useStaleSessionRecovery } from '@/hooks/useStaleSessionRecovery'
+import { TransportConnectionBanner, shouldShowTransportConnectionBanner } from '@/components/app-shell/TransportConnectionBanner'
+import { getFileManagerName } from '@/lib/platform'
 import { ActionRegistryProvider } from '@/actions'
+import { toast } from 'sonner'
 
 type AppState = 'loading' | 'onboarding' | 'reauth' | 'ready'
 
@@ -114,6 +123,10 @@ function handleBackgroundTaskEvent(
         ? { ...t, elapsedSeconds: evt.elapsedSeconds as number }
         : t
     ))
+  } else if (event.type === 'task_completed' && 'taskId' in evt) {
+    // Remove task when background task completes
+    const currentTasks = store.get(backgroundTasksAtom)
+    store.set(backgroundTasksAtom, currentTasks.filter(t => t.id !== evt.taskId))
   } else if (event.type === 'shell_killed' && 'shellId' in evt) {
     // Remove shell task when KillShell succeeds
     const currentTasks = store.get(backgroundTasksAtom)
@@ -136,8 +149,9 @@ function handleBackgroundTaskEvent(
   // Note: We do NOT clear background tasks on complete/error/interrupted
   // Background tasks should persist and keep running after the turn ends
   // They are only removed when:
-  // 1. Their tool_result comes back (task finished)
-  // 2. KillShell succeeds (shell_killed event)
+  // 1. task_completed event arrives (background task finished)
+  // 2. Their tool_result comes back (foreground task finished)
+  // 3. KillShell succeeds (shell_killed event)
 }
 
 export default function App() {
@@ -210,8 +224,7 @@ export default function App() {
   // Using ref instead of state to avoid re-renders during typing - drafts are only
   // needed for initial value restoration and disk persistence, not reactive updates
   const sessionDraftsRef = useRef<Map<string, string>>(new Map())
-  // Unified session options - replaces ultrathinkSessions and sessionModes
-  // All session-scoped options in one place (ultrathink, permissionMode)
+  // Unified session options for all session-scoped settings
   const [sessionOptions, setSessionOptions] = useState<Map<string, SessionOptions>>(new Map())
 
   // Theme state (app-level only)
@@ -261,8 +274,154 @@ export default function App() {
     sessionOptionsRef.current = sessionOptions
   }, [sessionOptions])
 
+  const applyPermissionModeState = useCallback((sessionId: string, state: PermissionModeState, source: 'event' | 'reconcile') => {
+    setSessionOptions(prev => {
+      const next = new Map(prev)
+      const current = next.get(sessionId) ?? defaultSessionOptions
+      const currentVersion = current.permissionModeVersion ?? -1
+
+      if (state.modeVersion < currentVersion) {
+        window.electronAPI.debugLog(
+          '[ModeSync] Ignoring stale permission mode update',
+          { sessionId, source, incoming: state.modeVersion, current: currentVersion }
+        )
+        return prev
+      }
+
+      if (
+        state.modeVersion === currentVersion &&
+        current.permissionMode !== state.permissionMode
+      ) {
+        window.electronAPI.debugLog(
+          '[ModeSync] Equal modeVersion with differing mode detected, applying and requesting reconciliation',
+          {
+            sessionId,
+            source,
+            modeVersion: state.modeVersion,
+            currentMode: current.permissionMode,
+            incomingMode: state.permissionMode,
+          }
+        )
+      }
+
+      next.set(sessionId, {
+        ...current,
+        permissionMode: state.permissionMode,
+        permissionModeVersion: state.modeVersion,
+      })
+      return next
+    })
+  }, [])
+
+  const reconcilePermissionModeState = useCallback(async (sessionId: string) => {
+    try {
+      const state = await window.electronAPI.getSessionPermissionModeState(sessionId)
+      if (!state) return
+      applyPermissionModeState(sessionId, state, 'reconcile')
+    } catch (error) {
+      window.electronAPI.debugLog('[ModeSync] Failed to reconcile permission mode', {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [applyPermissionModeState])
+
   // Event processor hook - handles all agent events through pure functions
-  const { processAgentEvent } = useEventProcessor()
+  const { processAgentEvent, clearStreamingState } = useEventProcessor()
+
+  const syncSessionOptionsFromSession = useCallback((session: Session) => {
+    setSessionOptions(prev => {
+      const next = new Map(prev)
+      const current = next.get(session.id)
+      const merged = {
+        ...defaultSessionOptions,
+        ...current,
+        permissionMode: session.permissionMode ?? defaultSessionOptions.permissionMode,
+        thinkingLevel: session.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+      }
+
+      const hasNonDefaultMode = merged.permissionMode !== defaultSessionOptions.permissionMode
+      const hasNonDefaultThinking = merged.thinkingLevel !== DEFAULT_THINKING_LEVEL
+
+      if (!hasNonDefaultMode && !hasNonDefaultThinking && merged.permissionModeVersion == null) {
+        next.delete(session.id)
+      } else {
+        next.set(session.id, merged)
+      }
+
+      return next
+    })
+  }, [])
+
+  const refreshSessionFromServer = useCallback(async (sessionId: string): Promise<boolean> => {
+    try {
+      const fresh = await window.electronAPI.getSessionMessages(sessionId)
+      if (!fresh) return false
+
+      clearStreamingState(sessionId)
+      updateSessionDirect(sessionId, () => fresh)
+      syncSessionOptionsFromSession(fresh)
+      void reconcilePermissionModeState(sessionId)
+      return true
+    } catch (err) {
+      console.error(`[App] Failed to refresh session ${sessionId}:`, err)
+      return false
+    }
+  }, [clearStreamingState, updateSessionDirect, syncSessionOptionsFromSession, reconcilePermissionModeState])
+
+  const refreshSessionListMetadataFromServer = useCallback(async (): Promise<Map<string, SessionMeta> | null> => {
+    try {
+      const sessions = await window.electronAPI.getSessions()
+      const loadedSessionIds = store.get(loadedSessionsAtom)
+      const currentIds = store.get(sessionIdsAtom)
+      const latestIds = new Set(sessions.map(session => session.id))
+
+      for (const staleSessionId of currentIds) {
+        if (!latestIds.has(staleSessionId)) {
+          removeSession(staleSessionId)
+        }
+      }
+
+      for (const session of sessions) {
+        const currentSession = store.get(sessionAtomFamily(session.id))
+        const shouldPreserveMessages = !!currentSession && loadedSessionIds.has(session.id)
+        const nextSession = shouldPreserveMessages && currentSession
+          ? {
+              ...session,
+              messages: currentSession.messages,
+            }
+          : session
+
+        store.set(sessionAtomFamily(session.id), nextSession)
+
+        syncSessionOptionsFromSession(session)
+        void reconcilePermissionModeState(session.id)
+      }
+
+      const nextMetaMap = new Map<string, SessionMeta>()
+      for (const session of sessions) {
+        nextMetaMap.set(session.id, extractSessionMeta(session))
+      }
+      store.set(sessionMetaMapAtom, nextMetaMap)
+
+      const nextIds = sessions
+        .slice()
+        .sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0))
+        .map(session => session.id)
+      store.set(sessionIdsAtom, nextIds)
+
+      return nextMetaMap
+    } catch (err) {
+      console.error('[App] Failed to refresh session list metadata after reconnect:', err)
+      return null
+    }
+  }, [store, removeSession, syncSessionOptionsFromSession, reconcilePermissionModeState])
+
+  // Stale session watchdog — catches stuck sessions that the reconnect protocol misses
+  const { trackSessionActivity } = useStaleSessionRecovery({
+    store,
+    refreshSessionFromServer,
+  })
 
   const DRAFT_SAVE_DEBOUNCE_MS = 500
 
@@ -383,7 +542,21 @@ export default function App() {
 
     window.electronAPI.getWorkspaces().then(setWorkspaces)
     window.electronAPI.getNotificationsEnabled().then(setNotificationsEnabled)
-    window.electronAPI.getSessions().then((loadedSessions) => {
+
+    // Show actionable toast for missing system dependencies (Windows only)
+    window.electronAPI.getSystemWarnings().then((warnings) => {
+      if (warnings.vcredistMissing) {
+        toast.warning('Microsoft Visual C++ Redistributable not found', {
+          description: 'Document tools (PDF, PPTX, DOCX, XLSX) require it to work. Restart after installing.',
+          duration: Infinity,
+          action: {
+            label: 'Install',
+            onClick: () => window.electronAPI.openUrl(warnings.downloadUrl ?? 'https://aka.ms/vs/17/release/vc_redist.x64.exe'),
+          },
+        })
+      }
+    }).catch(() => { /* non-fatal startup check */ })
+    window.electronAPI.getSessions().then(async (loadedSessions) => {
       // Initialize per-session atoms and metadata map
       // NOTE: No sessionsAtom used - sessions are only in per-session atoms
       initializeSessions(loadedSessions)
@@ -392,16 +565,21 @@ export default function App() {
       for (const s of loadedSessions) {
         // Only store non-default options to keep the map lean
         const hasNonDefaultMode = s.permissionMode && s.permissionMode !== 'ask'
-        const hasNonDefaultThinking = s.thinkingLevel && s.thinkingLevel !== 'think'
+        const hasNonDefaultThinking = s.thinkingLevel && s.thinkingLevel !== DEFAULT_THINKING_LEVEL
         if (hasNonDefaultMode || hasNonDefaultThinking) {
           optionsMap.set(s.id, {
-            ultrathinkEnabled: false, // ultrathink is single-shot, never persisted
             permissionMode: s.permissionMode ?? 'ask',
-            thinkingLevel: s.thinkingLevel ?? 'think',
+            thinkingLevel: s.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
           })
         }
       }
       setSessionOptions(optionsMap)
+
+      // Reconcile permission mode state from backend diagnostics (mode + modeVersion)
+      await Promise.allSettled(
+        loadedSessions.map((s) => reconcilePermissionModeState(s.id))
+      )
+
       // Mark sessions as loaded for splash screen
       setSessionsLoaded(true)
 
@@ -426,7 +604,7 @@ export default function App() {
     })
     // Load app-level theme
     window.electronAPI.getAppTheme().then(setAppTheme)
-  }, [appState, initialSessionId, windowWorkspaceId, setSession, initializeSessions, resolveDefaultConnectionSlug])
+  }, [appState, initialSessionId, windowWorkspaceId, initializeSessions, resolveDefaultConnectionSlug, reconcilePermissionModeState])
 
   // Subscribe to theme change events (live updates when theme.json changes)
   useEffect(() => {
@@ -481,15 +659,36 @@ export default function App() {
               next.set(sessionId, [...existingQueue, effect.request])
               return next
             })
+
+            // Native notification for approval-required pauses (same gating as completion notifications)
+            const notifySession = store.get(sessionAtomFamily(sessionId))
+            if (notifySession && !notifySession.hidden) {
+              const isAdminPrompt = effect.request.type === 'admin_approval'
+              const promptBody = isAdminPrompt
+                ? `Admin approval required: ${effect.request.appName || effect.request.toolName}`
+                : `Permission required: ${effect.request.toolName}`
+              showSessionNotification(notifySession, promptBody)
+            }
             break
           }
           case 'permission_mode_changed': {
-            setSessionOptions(prevOpts => {
-              const next = new Map(prevOpts)
-              const current = next.get(effect.sessionId) ?? defaultSessionOptions
-              next.set(effect.sessionId, { ...current, permissionMode: effect.permissionMode })
-              return next
-            })
+            if (typeof effect.modeVersion === 'number' && effect.changedAt && effect.changedBy) {
+              applyPermissionModeState(effect.sessionId, {
+                permissionMode: effect.permissionMode,
+                modeVersion: effect.modeVersion,
+                changedAt: effect.changedAt,
+                changedBy: effect.changedBy,
+              }, 'event')
+            } else {
+              // Backward compatibility: apply mode optimistically then reconcile authoritative state.
+              setSessionOptions(prevOpts => {
+                const next = new Map(prevOpts)
+                const current = next.get(effect.sessionId) ?? defaultSessionOptions
+                next.set(effect.sessionId, { ...current, permissionMode: effect.permissionMode })
+                return next
+              })
+              void reconcilePermissionModeState(effect.sessionId)
+            }
             break
           }
           case 'credential_request': {
@@ -509,6 +708,25 @@ export default function App() {
             setTimeout(() => {
               window.electronAPI.sendMessage(effect.sessionId, messageWithSuffix)
             }, 100)
+            break
+          }
+          case 'restore_input': {
+            // Queued messages were removed from chat on abort — restore their text to the input field.
+            // Append to existing draft (user may have started typing) rather than overwrite.
+            const existingDraft = sessionDraftsRef.current.get(sessionId) ?? ''
+            const restored = existingDraft
+              ? `${existingDraft}\n\n${effect.text}`
+              : effect.text
+            handleInputChange(sessionId, restored)
+            // handleInputChange updates the ref but ChatPage has local state.
+            // Dispatch a custom event so ChatPage re-reads the draft.
+            window.dispatchEvent(new CustomEvent('craft:restore-input', {
+              detail: { sessionId, text: restored },
+            }))
+            break
+          }
+          case 'toast_error': {
+            toast.error(effect.message, { duration: 5000 })
             break
           }
         }
@@ -536,12 +754,44 @@ export default function App() {
     }
 
     const cleanup = window.electronAPI.onSessionEvent((event: SessionEvent) => {
-      // Some events don't have sessionId (e.g., sessions_reordered)
       if (!('sessionId' in event)) return
 
       const sessionId = event.sessionId
       const workspaceId = windowWorkspaceId ?? ''
+
+      // Session lifecycle events are handled explicitly (not by the agent event processor).
+      if (event.type === 'session_created') {
+        window.electronAPI.getSessionMessages(sessionId)
+          .then((createdSession: Session | null) => {
+            if (createdSession) {
+              const existingMeta = store.get(sessionMetaMapAtom).has(sessionId)
+              if (existingMeta) {
+                updateSessionDirect(sessionId, () => createdSession)
+                const metaMap = store.get(sessionMetaMapAtom)
+                const nextMetaMap = new Map(metaMap)
+                nextMetaMap.set(sessionId, extractSessionMeta(createdSession))
+                store.set(sessionMetaMapAtom, nextMetaMap)
+              } else {
+                addSession(createdSession)
+              }
+              syncSessionOptionsFromSession(createdSession)
+              return
+            }
+            return window.electronAPI.getSessions().then(initializeSessions)
+          })
+          .catch((error: unknown) => console.error('Failed to handle session_created event:', error))
+        return
+      }
+
+      if (event.type === 'session_deleted') {
+        removeSession(sessionId)
+        return
+      }
+
       const agentEvent = event as unknown as AgentEvent
+
+      // Track activity for stale session watchdog
+      trackSessionActivity(sessionId)
 
       // Dispatch window event when compaction completes
       // This allows FreeFormInput to sequence the plan execution message after compaction
@@ -631,7 +881,46 @@ export default function App() {
     })
 
     return cleanup
-  }, [processAgentEvent, windowWorkspaceId, store, updateSessionDirect, showSessionNotification])
+  }, [
+    processAgentEvent,
+    trackSessionActivity,
+    windowWorkspaceId,
+    store,
+    updateSessionDirect,
+    showSessionNotification,
+    initializeSessions,
+    addSession,
+    removeSession,
+    syncSessionOptionsFromSession,
+    applyPermissionModeState,
+    reconcilePermissionModeState,
+  ])
+
+  // Transport reconnect recovery — refresh session metadata plus active/processing
+  // session content after stale reconnects.
+  useEffect(() => {
+    const cleanup = window.electronAPI.onReconnected(async (isStale: boolean) => {
+      if (!isStale) {
+        // Server replayed buffered events — we're caught up, nothing to do
+        console.info('[App] Reconnected with event replay — no refresh needed')
+        return
+      }
+
+      console.warn('[App] Stale reconnect — refreshing session metadata and active/processing sessions')
+
+      const refreshedMetaMap = await refreshSessionListMetadataFromServer()
+      const metaMap = refreshedMetaMap ?? store.get(sessionMetaMapAtom)
+      const refreshIds = getSessionsToRefreshAfterStaleReconnect(metaMap, sessionSelection.selected)
+
+      // Refresh full message content only for the active session plus any
+      // session still marked processing after the metadata refresh.
+      for (const sessionId of refreshIds) {
+        await refreshSessionFromServer(sessionId)
+      }
+    })
+
+    return cleanup
+  }, [store, sessionSelection.selected, refreshSessionFromServer, refreshSessionListMetadataFromServer])
 
   // Listen for menu bar events
   useEffect(() => {
@@ -655,24 +944,10 @@ export default function App() {
     const session = await window.electronAPI.createSession(workspaceId, options)
     // Add to per-session atom and metadata map (no sessionsAtom)
     addSession(session)
-
-    // Apply session defaults to the unified sessionOptions
-    const hasNonDefaultMode = session.permissionMode && session.permissionMode !== 'ask'
-    const hasNonDefaultThinking = session.thinkingLevel && session.thinkingLevel !== 'think'
-    if (hasNonDefaultMode || hasNonDefaultThinking) {
-      setSessionOptions(prev => {
-        const next = new Map(prev)
-        next.set(session.id, {
-          ultrathinkEnabled: false,
-          permissionMode: session.permissionMode ?? 'ask',
-          thinkingLevel: session.thinkingLevel ?? 'think',
-        })
-        return next
-      })
-    }
+    syncSessionOptionsFromSession(session)
 
     return session
-  }, [addSession])
+  }, [addSession, syncSessionOptionsFromSession])
 
   // Deep link navigation is initialized later after handleInputChange is defined
 
@@ -698,6 +973,12 @@ export default function App() {
     removeSession(sessionId)
     return true
   }, [store, removeSession])
+
+  // Auto-delete handler for empty sessions (fire-and-forget, no confirmation)
+  const handleAutoDeleteEmptySession = useCallback((sessionId: string) => {
+    window.electronAPI.deleteSession(sessionId)
+    removeSession(sessionId)
+  }, [removeSession])
 
   const handleFlagSession = useCallback((sessionId: string) => {
     updateSessionById(sessionId, { isFlagged: true })
@@ -832,10 +1113,7 @@ export default function App() {
         )
       }
 
-      // Step 3: Check if ultrathink is enabled for this session
-      const isUltrathink = sessionOptions.get(sessionId)?.ultrathinkEnabled ?? false
-
-      // Step 4: Extract badges from mentions (sources/skills) with embedded icons
+      // Step 3: Extract badges from mentions (sources/skills) with embedded icons
       // Badges are self-contained for display in UserMessageBubble and viewer
       // Merge with any externally provided badges (e.g., from EditPopover context badges)
       // Use workspace slug (not UUID) for skill qualification - SDK expects "workspaceSlug:skillSlug"
@@ -886,7 +1164,6 @@ export default function App() {
         timestamp: Date.now(),
         attachments: storedAttachments,
         badges: badges.length > 0 ? badges : undefined,
-        ultrathink: isUltrathink || undefined,  // Only set if true
         isPending: true,  // Optimistic - will be confirmed by backend
       }
 
@@ -899,16 +1176,10 @@ export default function App() {
 
       // Step 6: Send to Claude with processed attachments + stored attachments for persistence
       await window.electronAPI.sendMessage(sessionId, message, processedAttachments, storedAttachments, {
-        ultrathinkEnabled: isUltrathink,
         skillSlugs,
         badges: badges.length > 0 ? badges : undefined,
         optimisticMessageId: userMessage.id,
       })
-
-      // Auto-disable ultrathink after sending (single-shot activation)
-      if (isUltrathink) {
-        handleSessionOptionsChange(sessionId, { ultrathinkEnabled: false })
-      }
     } catch (error) {
       console.error('Failed to send message:', error)
       updateSessionById(sessionId, (s) => ({
@@ -947,7 +1218,6 @@ export default function App() {
       // Sync thinking level change with backend (session-level, persisted)
       window.electronAPI.sessionCommand(sessionId, { type: 'setThinkingLevel', level: updates.thinkingLevel })
     }
-    // ultrathinkEnabled is UI-only (single-shot), no backend persistence needed
   }, [sessionOptions])
 
   // Handle input draft changes per session with debounced persistence
@@ -1010,8 +1280,14 @@ export default function App() {
     }
   }, [windowWorkspaceId, handleCreateSession, handleInputChange])
 
-  const handleRespondToPermission = useCallback(async (sessionId: string, requestId: string, allowed: boolean, alwaysAllow: boolean) => {
-    const success = await window.electronAPI.respondToPermission(sessionId, requestId, allowed, alwaysAllow)
+  const handleRespondToPermission = useCallback(async (
+    sessionId: string,
+    requestId: string,
+    allowed: boolean,
+    alwaysAllow: boolean,
+    options?: import('../shared/types').PermissionResponseOptions,
+  ) => {
+    const success = await window.electronAPI.respondToPermission(sessionId, requestId, allowed, alwaysAllow, options)
 
     if (success) {
       // Remove only the first permission from the queue (the one we just responded to)
@@ -1083,21 +1359,52 @@ export default function App() {
   // handleOpenFile/handleOpenUrl that always opened in external apps.
   const linkInterceptor = useLinkInterceptor({
     openFileExternal: async (path) => {
-      try { await window.electronAPI.openFile(path) }
-      catch (error) { console.error('Failed to open file:', error) }
+      try {
+        await window.electronAPI.openFile(path)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        console.error('Failed to open file:', error)
+        toast.error('Failed to open file', {
+          description: message,
+        })
+      }
     },
     openUrl: async (url) => {
-      try { await window.electronAPI.openUrl(url) }
-      catch (error) { console.error('Failed to open URL:', error) }
+      try {
+        await window.electronAPI.openUrl(url)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        console.error('Failed to open URL:', error)
+        toast.error('Failed to open link', {
+          description: `${message}. If this is a local path, use Open File instead.`,
+        })
+      }
     },
     showInFolder: async (path) => {
-      try { await window.electronAPI.showInFolder(path) }
-      catch (error) { console.error('Failed to show in folder:', error) }
+      try {
+        await window.electronAPI.showInFolder(path)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        console.error('Failed to show in folder:', error)
+        toast.error(`Failed to reveal in ${getFileManagerName()}`, {
+          description: message,
+        })
+      }
     },
     readFile: (path) => window.electronAPI.readFile(path),
     readFileDataUrl: (path) => window.electronAPI.readFileDataUrl(path),
     readFileBinary: (path) => window.electronAPI.readFileBinary(path),
   })
+
+  const transportConnectionState = useTransportConnectionState()
+  const showTransportConnectionBanner = shouldShowTransportConnectionBanner(transportConnectionState)
+
+  const handleReconnectTransport = useCallback(() => {
+    void window.electronAPI.reconnectTransport().catch((error) => {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      toast.error('Reconnect failed', { description: message })
+    })
+  }, [])
 
   const handleOpenFile = linkInterceptor.handleOpenFile
   const handleOpenUrl = linkInterceptor.handleOpenUrl
@@ -1185,21 +1492,28 @@ export default function App() {
       store.set(sourcesAtom, [])
       store.set(skillsAtom, [])
 
-      // 8. Clear session atoms BEFORE navigating
-      // This prevents applyNavigationState from auto-selecting a session from the old workspace.
-      // Without this, getFirstSessionId() would return a session ID from the previous workspace,
-      // causing the detail panel to show a stale chat until sessions reload.
+      // 8. Clear session atoms BEFORE workspace switch
+      // This prevents stale session data from the previous workspace being visible.
       store.set(sessionMetaMapAtom, new Map())
       store.set(sessionIdsAtom, [])
 
-      // 9. Navigate to allSessions view without a specific session selected
-      // This ensures the UI is in a clean state for the new workspace
-      navigate(routes.view.allSessions())
-
-      // Note: Sessions and theme will reload automatically due to windowWorkspaceId dependency
-      // in useEffect hooks
+      // Note: NavigationContext detects the workspaceId change and handles
+      // panel restoration from the stored workspace URL (or defaults to allSessions).
+      // Sessions and theme will reload automatically due to windowWorkspaceId dependency
+      // in useEffect hooks.
     }
   }, [windowWorkspaceId, setSession, store])
+
+  // Handle workspace switch by slug (called by NavigationContext on popstate when ?ws= changes)
+  const handleSwitchWorkspaceBySlug = useCallback((slug: string) => {
+    const target = workspaces.find(w => {
+      const wsSlug = extractWorkspaceSlugFromPath(w.rootPath, w.id)
+      return wsSlug === slug
+    })
+    if (target) {
+      handleSelectWorkspace(target.id)
+    }
+  }, [workspaces, handleSelectWorkspace])
 
   // Handle workspace refresh (e.g., after icon upload)
   const handleRefreshWorkspaces = useCallback(() => {
@@ -1307,14 +1621,18 @@ export default function App() {
     // Bypass link interceptor — opens file directly in system editor.
     // Used by overlay header badges (when already viewing a file, "Open" should launch editor).
     onOpenFileExternal: linkInterceptor.openFileExternal,
-    // Read file contents as UTF-8 string (used by datatable/spreadsheet src field)
+    // Read file contents as UTF-8 string (used by datatable/spreadsheet/html-preview src fields)
     onReadFile: (path: string) => window.electronAPI.readFile(path),
+    // Read file as data URL (used by image-preview blocks)
+    onReadFileDataUrl: (path: string) => window.electronAPI.readFileDataUrl(path),
     // Read file as binary Uint8Array (used by PDF preview blocks)
     onReadFileBinary: (path: string) => window.electronAPI.readFileBinary(path),
-    // Reveal a file in the system file manager (Finder on macOS, Explorer on Windows)
+    // Reveal a file in the system file manager (Finder on macOS, Explorer on Windows, etc.)
     onRevealInFinder: (path: string) => {
       window.electronAPI.showInFolder(path).catch(() => {})
     },
+    // Platform-specific file manager name for UI labels
+    fileManagerName: getFileManagerName(),
     // Hide/show macOS traffic lights when fullscreen overlays are open
     onSetTrafficLightsVisible: (visible: boolean) => {
       window.electronAPI.setTrafficLightsVisible(visible)
@@ -1330,18 +1648,20 @@ export default function App() {
   // ModalProvider + WindowCloseHandler ensures X button works on Windows
   if (appState === 'reauth') {
     return (
-      <ModalProvider>
-        <WindowCloseHandler />
-        <ReauthScreen
-          onLogin={handleReauthLogin}
-          onReset={handleReauthReset}
-        />
-        <ResetConfirmationDialog
-          open={showResetDialog}
-          onConfirm={executeReset}
-          onCancel={() => setShowResetDialog(false)}
-        />
-      </ModalProvider>
+      <DismissibleLayerProvider>
+        <ModalProvider>
+          <WindowCloseHandler />
+          <ReauthScreen
+            onLogin={handleReauthLogin}
+            onReset={handleReauthReset}
+          />
+          <ResetConfirmationDialog
+            open={showResetDialog}
+            onConfirm={executeReset}
+            onCancel={() => setShowResetDialog(false)}
+          />
+        </ModalProvider>
+      </DismissibleLayerProvider>
     )
   }
 
@@ -1350,26 +1670,31 @@ export default function App() {
   // (without this, the close IPC message has no listener and window stays open)
   if (appState === 'onboarding') {
     return (
-      <ModalProvider>
-        <WindowCloseHandler />
-        <OnboardingWizard
-          state={onboarding.state}
-          onContinue={onboarding.handleContinue}
-          onBack={onboarding.handleBack}
-          onSelectApiSetupMethod={onboarding.handleSelectApiSetupMethod}
-          onSubmitCredential={onboarding.handleSubmitCredential}
-          onStartOAuth={onboarding.handleStartOAuth}
-          onFinish={onboarding.handleFinish}
-          isWaitingForCode={onboarding.isWaitingForCode}
-          onSubmitAuthCode={onboarding.handleSubmitAuthCode}
-          onCancelOAuth={onboarding.handleCancelOAuth}
-          copilotDeviceCode={onboarding.copilotDeviceCode}
-          onBrowseGitBash={onboarding.handleBrowseGitBash}
-          onUseGitBashPath={onboarding.handleUseGitBashPath}
-          onRecheckGitBash={onboarding.handleRecheckGitBash}
-          onClearError={onboarding.handleClearError}
-        />
-      </ModalProvider>
+      <DismissibleLayerProvider>
+        <ModalProvider>
+          <WindowCloseHandler />
+          <OnboardingWizard
+            state={onboarding.state}
+            onContinue={onboarding.handleContinue}
+            onBack={onboarding.handleBack}
+            onSelectProvider={onboarding.handleSelectProvider}
+            onSkipSetup={onboarding.handleSkipSetup}
+            onSelectApiSetupMethod={onboarding.handleSelectApiSetupMethod}
+            onSubmitCredential={onboarding.handleSubmitCredential}
+            onSubmitLocalModel={onboarding.handleSubmitLocalModel}
+            onStartOAuth={onboarding.handleStartOAuth}
+            onFinish={onboarding.handleFinish}
+            isWaitingForCode={onboarding.isWaitingForCode}
+            onSubmitAuthCode={onboarding.handleSubmitAuthCode}
+            onCancelOAuth={onboarding.handleCancelOAuth}
+            copilotDeviceCode={onboarding.copilotDeviceCode}
+            onBrowseGitBash={onboarding.handleBrowseGitBash}
+            onUseGitBashPath={onboarding.handleUseGitBashPath}
+            onRecheckGitBash={onboarding.handleRecheckGitBash}
+            onClearError={onboarding.handleClearError}
+          />
+        </ModalProvider>
+      </DismissibleLayerProvider>
     )
   }
 
@@ -1382,13 +1707,19 @@ export default function App() {
     <ShikiThemeProvider shikiTheme={shikiTheme}>
       <ActionRegistryProvider>
       <FocusProvider>
+        <DismissibleLayerProvider>
         <ModalProvider>
         <TooltipProvider delayDuration={0}>
         <NavigationProvider
           workspaceId={windowWorkspaceId}
+          workspaceSlug={windowWorkspaceSlug}
+          onSwitchWorkspaceBySlug={handleSwitchWorkspaceBySlug}
           onCreateSession={handleCreateSession}
           onInputChange={handleInputChange}
+          getDraft={getDraft}
+          onAutoDeleteEmptySession={handleAutoDeleteEmptySession}
           isReady={appState === 'ready'}
+          isSessionsReady={sessionsLoaded}
         >
           {/* Handle window close requests (X button, Cmd+W) - close modal first if open */}
           <WindowCloseHandler />
@@ -1402,7 +1733,13 @@ export default function App() {
           )}
 
           {/* Main UI - always rendered, splash fades away to reveal it */}
-          <div className="h-full flex flex-col text-foreground">
+          <div className="h-full flex flex-col pt-[48px] text-foreground">
+            {showTransportConnectionBanner && transportConnectionState && (
+              <TransportConnectionBanner
+                state={transportConnectionState}
+                onRetry={handleReconnectTransport}
+              />
+            )}
             <div className="flex-1 min-h-0">
               <AppShell
                 contextValue={appShellContextValue}
@@ -1431,6 +1768,7 @@ export default function App() {
         </NavigationProvider>
         </TooltipProvider>
         </ModalProvider>
+        </DismissibleLayerProvider>
       </FocusProvider>
       </ActionRegistryProvider>
     </ShikiThemeProvider>
@@ -1457,7 +1795,7 @@ function WindowCloseHandler() {
  * - markdown → DocumentFormattedMarkdownOverlay
  * - json → JSONPreviewOverlay
  *
- * File path badges with "Open" / "Reveal in Finder" menus are provided
+ * File path badges with "Open" / "Reveal in {file manager}" menus are provided
  * automatically by PlatformContext — no per-overlay callback props needed.
  */
 function FilePreviewRenderer({
@@ -1530,12 +1868,28 @@ function FilePreviewRenderer({
     }
 
     case 'json': {
-      // JSONPreviewOverlay expects parsed data, not a raw string
+      // JSONPreviewOverlay expects parsed data, not a raw string.
+      // @uiw/react-json-view crashes on null value, so guard against it.
       let parsedData: unknown = null
       try {
         if (state.content) parsedData = JSON.parse(state.content)
       } catch {
         // If parsing fails, fall back to showing as code
+        return (
+          <CodePreviewOverlay
+            isOpen
+            onClose={onClose}
+            filePath={state.filePath}
+            content={state.content ?? ''}
+            language="json"
+            mode="read"
+            theme={theme}
+            error={state.error}
+          />
+        )
+      }
+      // If read failed and content is empty, show raw code overlay with the read error.
+      if ((!state.content || !state.content.trim()) && state.error) {
         return (
           <CodePreviewOverlay
             isOpen

@@ -86,7 +86,7 @@ export function createMockBackendConfig(overrides: Partial<BackendConfig> = {}):
     workspace: createMockWorkspace(),
     session: createMockSession(),
     model: 'test-model',
-    thinkingLevel: 'think',
+    thinkingLevel: 'medium',
     isHeadless: true, // Headless mode to avoid config watcher
     ...overrides,
   };
@@ -101,6 +101,7 @@ export function createMockBackendConfig(overrides: Partial<BackendConfig> = {}):
  * Provides minimal implementations of abstract methods.
  */
 export class TestAgent extends BaseAgent {
+  protected backendName = 'Test';
   // Track calls for verification
   public chatCalls: Array<{ message: string; attachments?: unknown[]; options?: ChatOptions }> = [];
   public abortCalls: Array<{ reason?: string }> = [];
@@ -113,7 +114,7 @@ export class TestAgent extends BaseAgent {
     super(config, 'test-model', 100_000);
   }
 
-  async *chat(
+  protected async *chatImpl(
     message: string,
     attachments?: unknown[],
     options?: ChatOptions

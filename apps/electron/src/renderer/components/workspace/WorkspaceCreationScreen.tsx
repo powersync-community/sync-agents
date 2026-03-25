@@ -9,6 +9,7 @@ import { AddWorkspaceStep_Choice } from "./AddWorkspaceStep_Choice"
 import { AddWorkspaceStep_CreateNew } from "./AddWorkspaceStep_CreateNew"
 import { AddWorkspaceStep_OpenFolder } from "./AddWorkspaceStep_OpenFolder"
 import type { Workspace } from "../../../shared/types"
+import { toast } from "sonner"
 
 type CreationStep = 'choice' | 'create' | 'open'
 
@@ -65,8 +66,10 @@ export function WorkspaceCreationScreen({
       })
       onWorkspaceCreated(workspace)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create workspace'
-      setSubmitError(message)
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      toast.error('Failed to create workspace', {
+        description: message,
+      })
     } finally {
       setIsCreating(false)
     }

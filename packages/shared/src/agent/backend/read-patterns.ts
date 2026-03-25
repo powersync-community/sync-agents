@@ -9,6 +9,7 @@
  */
 
 import bashParser from 'bash-parser';
+import { looksLikePowerShell, extractPowerShellReadTarget } from '../powershell-validator.ts';
 
 // ============================================================
 // Types
@@ -76,6 +77,12 @@ const SHELL_EXECUTABLES = new Set([
  * @returns ReadCommandInfo if detected as a read, null otherwise
  */
 export function parseReadCommand(command: string): ReadCommandInfo | null {
+  // PowerShell read detection (bash-parser can't handle PS syntax)
+  if (looksLikePowerShell(command)) {
+    const filePath = extractPowerShellReadTarget(command);
+    if (filePath) return { filePath, originalCommand: command };
+  }
+
   try {
     const ast = bashParser(command) as ScriptNode;
     const cmd = extractSimpleCommand(ast);
@@ -333,3 +340,4 @@ function parseTailCommand(args: string[], original: string): ReadCommandInfo | n
 
   return null;
 }
+

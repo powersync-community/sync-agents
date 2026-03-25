@@ -23,13 +23,16 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { isDeveloperFeedbackEnabled } from '@craft-agent/shared/feature-flags';
 // Import from session-tools-core
 import {
   type SessionToolContext,
@@ -38,17 +41,9 @@ import {
   type SourceConfig,
   type LoadedSource,
   type CredentialManagerInterface,
-  // Handlers
-  handleSubmitPlan,
-  handleConfigValidate,
-  handleSkillValidate,
-  handleMermaidValidate,
-  handleSourceTest,
-  handleSourceOAuthTrigger,
-  handleGoogleOAuthTrigger,
-  handleSlackOAuthTrigger,
-  handleMicrosoftOAuthTrigger,
-  handleCredentialPrompt,
+  // Registry
+  getSessionToolRegistry,
+  getToolDefsAsJsonSchema,
   // Helpers
   loadSourceConfig as loadSourceConfigFromHelpers,
   errorResponse,
@@ -64,6 +59,8 @@ interface SessionConfig {
   plansFolderPath: string;
   callbackPort?: string;
 }
+
+const CALLBACK_TOOL_TIMEOUT_MS = 120000;
 
 // ============================================================
 // Callback Communication
@@ -96,7 +93,7 @@ interface CredentialCacheEntry {
  * The main process writes decrypted credentials to these files.
  */
 function getCredentialCachePath(workspaceRootPath: string, sourceSlug: string): string {
-  return `${workspaceRootPath}/sources/${sourceSlug}/.credential-cache.json`;
+  return join(workspaceRootPath, 'sources', sourceSlug, '.credential-cache.json');
 }
 
 /**
@@ -195,6 +192,10 @@ function createCodexContext(config: SessionConfig): SessionToolContext {
   // Create credential manager that reads from cache files
   const credentialManager = createCredentialManager(workspaceRootPath);
 
+  // Session paths for transform_data / render_template
+  const sessionsDir = join(workspaceRootPath, 'sessions', sessionId);
+  const sessionDataDir = join(sessionsDir, 'data');
+
   // Build context
   return {
     sessionId,
@@ -202,6 +203,8 @@ function createCodexContext(config: SessionConfig): SessionToolContext {
     get sourcesPath() { return join(workspaceRootPath, 'sources'); },
     get skillsPath() { return join(workspaceRootPath, 'skills'); },
     plansFolderPath,
+    sessionPath: sessionsDir,
+    dataPath: sessionDataDir,
     callbacks,
     fs,
     loadSourceConfig: (sourceSlug: string): SourceConfig | null => {
@@ -211,301 +214,235 @@ function createCodexContext(config: SessionConfig): SessionToolContext {
     // Credential manager reads from cache files written by main process
     credentialManager,
 
+    // Preferences: write directly to preferences.json
+    updatePreferences: (updates: Record<string, unknown>) => {
+      // Resolve preferences path from config dir (parent of workspaces dir)
+      // workspaceRootPath = ~/.craft-agent/workspaces/{id}
+      // preferencesPath = ~/.craft-agent/preferences.json
+      const configDir = join(workspaceRootPath, '..', '..');
+      const prefsPath = join(configDir, 'preferences.json');
+      try {
+        let current: Record<string, unknown> = {};
+        if (existsSync(prefsPath)) {
+          current = JSON.parse(readFileSync(prefsPath, 'utf-8'));
+        }
+        const merged = {
+          ...current,
+          ...updates,
+          location: updates.location
+            ? { ...(current.location as Record<string, unknown> || {}), ...(updates.location as Record<string, unknown>) }
+            : current.location,
+          updatedAt: Date.now(),
+        };
+        writeFileSync(prefsPath, JSON.stringify(merged, null, 2), 'utf-8');
+      } catch (err) {
+        console.error('Failed to update preferences:', err);
+      }
+    },
+
+    // Developer feedback: write one JSON file per entry to {configDir}/feedback/
+    submitFeedback: (feedback) => {
+      const configDir = process.env.CRAFT_CONFIG_DIR || join(workspaceRootPath, '..', '..');
+      const feedbackDir = join(configDir, 'feedback');
+      mkdirSync(feedbackDir, { recursive: true });
+      const filePath = join(feedbackDir, `${feedback.id}.json`);
+      writeFileSync(filePath, JSON.stringify(feedback, null, 2), 'utf-8');
+    },
+
     // Note: saveSourceConfig, validators, renderMermaid
     // are not available in Codex context (require Electron internals)
   };
 }
 
 // ============================================================
-// Tool Definitions
+// Tool Definitions (from canonical registry)
 // ============================================================
 
-function createTools(): Tool[] {
-  return [
-    {
-      name: 'SubmitPlan',
-      description: `Submit a plan for user review.
+function createSessionTools(includeDeveloperFeedback: boolean): Tool[] {
+  return getToolDefsAsJsonSchema({
+    includeDeveloperFeedback,
+  }).map(def => ({
+    name: def.name,
+    description: def.description,
+    inputSchema: def.inputSchema as Tool['inputSchema'],
+  }));
+}
 
-Call this after you have written your plan to a markdown file using the Write tool.
-The plan will be displayed to the user in a special formatted view.
+// ============================================================
+// Craft Agents Docs Upstream Proxy
+// ============================================================
 
-**IMPORTANT:** After calling this tool:
-- Execution will be **automatically paused** to present the plan to the user
-- No further tool calls or text output will be processed after this tool returns
-- The conversation will resume when the user responds`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          planPath: {
-            type: 'string',
-            description: 'Absolute path to the plan markdown file you wrote',
-          },
-        },
-        required: ['planPath'],
-      },
-    },
-    {
-      name: 'config_validate',
-      description: `Validate Craft Agent configuration files.
+const DOCS_MCP_URL = 'https://agents.craft.do/docs/mcp';
 
-**Targets:**
-- config: Validates ~/.craft-agent/config.json
-- sources: Validates source config.json files
-- statuses: Validates statuses config
-- preferences: Validates preferences.json
-- permissions: Validates workspace permissions.json
-- tool-icons: Validates tool-icons.json
-- all: Validates all configuration files`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          target: {
-            type: 'string',
-            enum: ['config', 'sources', 'statuses', 'preferences', 'permissions', 'tool-icons', 'all'],
-            description: 'Which config file(s) to validate',
-          },
-          sourceSlug: {
-            type: 'string',
-            description: 'Validate a specific source by slug (used with target "sources")',
-          },
-        },
-        required: ['target'],
-      },
-    },
-    {
-      name: 'skill_validate',
-      description: `Validate a skill's SKILL.md file.
+/** Cached upstream client + tool list */
+let docsClient: Client | null = null;
+let docsTools: Tool[] = [];
 
-Checks slug format, SKILL.md existence, YAML frontmatter, and required fields.`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          skillSlug: {
-            type: 'string',
-            description: 'The slug of the skill to validate',
-          },
-        },
-        required: ['skillSlug'],
-      },
-    },
-    {
-      name: 'mermaid_validate',
-      description: `Validate Mermaid diagram syntax before outputting.
+/**
+ * Connect to the craft-agents-docs MCP server and fetch its tool definitions.
+ * Falls back gracefully if the server is unreachable (tools will just be empty).
+ */
+async function connectDocsUpstream(): Promise<void> {
+  try {
+    const client = new Client(
+      { name: 'craft-agent-session-proxy', version: '1.0.0' },
+      { capabilities: {} }
+    );
 
-Use this when creating complex diagrams or debugging syntax issues.
-Uses @craft-agent/mermaid parser for accurate validation.`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          code: {
-            type: 'string',
-            description: 'The mermaid diagram code to validate',
-          },
-        },
-        required: ['code'],
-      },
-    },
-    {
-      name: 'source_oauth_trigger',
-      description: `Start OAuth authentication for an MCP source.
+    const transport = new StreamableHTTPClientTransport(new URL(DOCS_MCP_URL));
+    await client.connect(transport);
 
-**IMPORTANT:** After calling this tool, execution will be paused while OAuth completes.`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          sourceSlug: {
-            type: 'string',
-            description: 'The slug of the source to authenticate',
-          },
-        },
-        required: ['sourceSlug'],
-      },
-    },
-    {
-      name: 'source_google_oauth_trigger',
-      description: `Trigger Google OAuth authentication for a Google API source (Gmail, Calendar, Drive).
+    const result = await client.listTools();
+    docsTools = (result.tools || []) as Tool[];
+    docsClient = client;
 
-**IMPORTANT:** After calling this tool, execution will be paused while OAuth completes.`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          sourceSlug: {
-            type: 'string',
-            description: 'The slug of the Google API source to authenticate',
-          },
-        },
-        required: ['sourceSlug'],
-      },
-    },
-    {
-      name: 'source_slack_oauth_trigger',
-      description: `Trigger Slack OAuth authentication for a Slack API source.
+    console.error(`Craft Agents Docs proxy connected: ${docsTools.length} tools`);
+  } catch (err) {
+    console.error(`Craft Agents Docs proxy connection failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    docsClient = null;
+    docsTools = [];
+  }
+}
 
-**IMPORTANT:** After calling this tool, execution will be paused while OAuth completes.`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          sourceSlug: {
-            type: 'string',
-            description: 'The slug of the Slack API source to authenticate',
-          },
-        },
-        required: ['sourceSlug'],
-      },
-    },
-    {
-      name: 'source_microsoft_oauth_trigger',
-      description: `Trigger Microsoft OAuth authentication for a Microsoft API source (Outlook, OneDrive, Teams).
+/**
+ * Route a tool call to the upstream docs client.
+ */
+async function callDocsUpstream(
+  name: string,
+  args: Record<string, unknown>
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  if (!docsClient) {
+    return errorResponse(`Craft Agents Docs server is not connected. Tool '${name}' unavailable.`);
+  }
 
-**IMPORTANT:** After calling this tool, execution will be paused while OAuth completes.`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          sourceSlug: {
-            type: 'string',
-            description: 'The slug of the Microsoft API source to authenticate',
-          },
-        },
-        required: ['sourceSlug'],
-      },
-    },
-    {
-      name: 'source_credential_prompt',
-      description: `Prompt the user to enter credentials for a source.
+  try {
+    const result = await docsClient.callTool({ name, arguments: args });
+    // Convert MCP result to our format
+    const textContent = (result.content as Array<{ type: string; text?: string }> || [])
+      .filter(c => c.type === 'text' && c.text)
+      .map(c => ({ type: 'text' as const, text: c.text! }));
 
-**Auth Modes:**
-- bearer: Single token field (Bearer Token, API Key)
-- basic: Username and Password fields
-- header: API Key with custom header name
-- query: API Key for query parameter auth
+    return {
+      content: textContent.length > 0 ? textContent : [{ type: 'text', text: '(No response from docs server)' }],
+      isError: result.isError as boolean | undefined,
+    };
+  } catch (err) {
+    return errorResponse(`Docs tool '${name}' failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 
-**IMPORTANT:** After calling this tool, execution will be paused for user input.`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          sourceSlug: {
-            type: 'string',
-            description: 'The slug of the source to authenticate',
-          },
-          mode: {
-            type: 'string',
-            enum: ['bearer', 'basic', 'header', 'query'],
-            description: 'Type of credential input',
-          },
-          labels: {
-            type: 'object',
-            description: 'Custom field labels',
-            properties: {
-              credential: { type: 'string' },
-              username: { type: 'string' },
-              password: { type: 'string' },
-            },
-          },
-          description: {
-            type: 'string',
-            description: 'Description shown to user',
-          },
-          hint: {
-            type: 'string',
-            description: 'Hint about where to find credentials',
-          },
-          passwordRequired: {
-            type: 'boolean',
-            description: 'For basic auth: whether password is required (default: true)',
-          },
-        },
-        required: ['sourceSlug', 'mode'],
-      },
-    },
-    {
-      name: 'source_test',
-      description: `Validate and test a source configuration.
+/** Check if a tool name belongs to the docs upstream */
+function isDocsUpstreamTool(name: string): boolean {
+  return docsTools.some(t => t.name === name);
+}
 
-**Performs:**
-1. Schema validation - validates config.json structure
-2. Completeness check - warns about missing guide.md/icon
-3. Connection test - tests if source endpoint is reachable
-4. Auth status - checks if source is authenticated
+// ============================================================
+// call_llm Handler (backend-specific)
+// ============================================================
 
-**Returns:** Detailed validation report with errors and warnings.`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          sourceSlug: {
-            type: 'string',
-            description: 'The slug of the source to test',
-          },
-        },
-        required: ['sourceSlug'],
-      },
-    },
-    {
-      name: 'call_llm',
-      description: `Invoke a secondary LLM for focused subtasks. Use for:
-- Cost optimization: use a smaller model for simple tasks (summarization, classification)
-- Structured output: JSON schema compliance
-- Parallel processing: call multiple times in one message - all run simultaneously
-- Context isolation: process content without polluting main context
+async function handleCallLlm(
+  args: Record<string, unknown>,
+  config: SessionConfig,
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  // Primary path: PreToolUse intercept injects _precomputedResult (works on Codex).
+  const precomputed = args?._precomputedResult as string | undefined;
 
-Pass file paths via 'attachments' - the tool loads content automatically.
-For large files (>2000 lines), use {path, startLine, endLine} to select a portion.`,
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          prompt: {
-            type: 'string',
-            description: 'Instructions for the LLM',
-          },
-          attachments: {
-            type: 'array',
-            description: 'File paths to include as context',
-            items: {
-              oneOf: [
-                { type: 'string' },
-                {
-                  type: 'object',
-                  properties: {
-                    path: { type: 'string' },
-                    startLine: { type: 'number' },
-                    endLine: { type: 'number' },
-                  },
-                  required: ['path'],
-                },
-              ],
-            },
-          },
-          model: {
-            type: 'string',
-            description: 'Model ID or short name (e.g., "haiku", "sonnet"). Defaults to Haiku.',
-          },
-          systemPrompt: {
-            type: 'string',
-            description: 'Optional system prompt',
-          },
-          maxTokens: {
-            type: 'number',
-            description: 'Max output tokens (1-64000). Defaults to 4096',
-          },
-          temperature: {
-            type: 'number',
-            description: 'Sampling temperature 0-1',
-          },
-          outputFormat: {
-            type: 'string',
-            enum: ['summary', 'classification', 'extraction', 'analysis', 'comparison', 'validation'],
-            description: 'Predefined output format',
-          },
-          outputSchema: {
-            type: 'object',
-            description: 'Custom JSON Schema for structured output',
-          },
-          // _precomputedResult is injected at runtime by PreToolUse intercept
-          // and intentionally NOT in the schema (hidden from the AI)
-        },
-        required: ['prompt'],
-      },
-    },
-  ];
+  if (precomputed) {
+    try {
+      const parsed = JSON.parse(precomputed);
+      if (parsed.error) {
+        return errorResponse(`call_llm failed: ${parsed.error}`);
+      }
+      if (parsed.text !== undefined) {
+        return {
+          content: [{ type: 'text' as const, text: parsed.text || '(Model returned empty response)' }],
+        };
+      }
+      return errorResponse('call_llm: _precomputedResult has unexpected format (missing text field).');
+    } catch {
+      return errorResponse(`call_llm: Failed to parse _precomputedResult: ${precomputed.slice(0, 200)}`);
+    }
+  }
+
+  // Fallback path: HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
+  // Uses callbackPort from CLI arg (--callback-port) or env var (CRAFT_LLM_CALLBACK_PORT).
+  if (config.callbackPort) {
+    try {
+      const resp = await fetch(`http://127.0.0.1:${config.callbackPort}/call-llm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(args),
+        signal: AbortSignal.timeout(CALLBACK_TOOL_TIMEOUT_MS),
+      });
+      const result = await resp.json() as { text?: string; model?: string; error?: string };
+      if (result.error) {
+        return errorResponse(`call_llm failed: ${result.error}`);
+      }
+      return {
+        content: [{ type: 'text' as const, text: result.text || '(Model returned empty response)' }],
+      };
+    } catch (err) {
+      return errorResponse(`call_llm callback failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return errorResponse(
+    'call_llm requires either PreToolUse intercept (_precomputedResult) or ' +
+    'HTTP callback (CRAFT_LLM_CALLBACK_PORT). Neither is available.'
+  );
+}
+
+// ============================================================
+// spawn_session Handler (backend-specific)
+// ============================================================
+
+async function handleSpawnSession(
+  args: Record<string, unknown>,
+  config: SessionConfig,
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+  // Primary path: PreToolUse intercept injects _precomputedResult (works on Codex).
+  const precomputed = args?._precomputedResult as string | undefined;
+
+  if (precomputed) {
+    try {
+      const parsed = JSON.parse(precomputed);
+      if (parsed.error) {
+        return errorResponse(`spawn_session failed: ${parsed.error}`);
+      }
+      // Return the full result (could be help info or spawn result)
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(parsed, null, 2) }],
+      };
+    } catch {
+      return errorResponse(`spawn_session: Failed to parse _precomputedResult: ${precomputed.slice(0, 200)}`);
+    }
+  }
+
+  // Fallback path: HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
+  if (config.callbackPort) {
+    try {
+      const resp = await fetch(`http://127.0.0.1:${config.callbackPort}/spawn-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(args),
+        signal: AbortSignal.timeout(CALLBACK_TOOL_TIMEOUT_MS),
+      });
+      const result = await resp.json() as Record<string, unknown>;
+      if (result.error) {
+        return errorResponse(`spawn_session failed: ${result.error}`);
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (err) {
+      return errorResponse(`spawn_session callback failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return errorResponse(
+    'spawn_session requires either PreToolUse intercept (_precomputedResult) or ' +
+    'HTTP callback (CRAFT_LLM_CALLBACK_PORT). Neither is available.'
+  );
 }
 
 // ============================================================
@@ -568,6 +505,9 @@ async function main() {
   // Create the Codex context
   const ctx = createCodexContext(config);
 
+  const includeDeveloperFeedback = isDeveloperFeedbackEnabled();
+  const sessionToolRegistry = getSessionToolRegistry({ includeDeveloperFeedback });
+
   // Create MCP server
   const server = new Server(
     {
@@ -581,107 +521,41 @@ async function main() {
     }
   );
 
-  // Handle tool listing
+  // Connect to upstream docs server (non-blocking, best-effort)
+  await connectDocsUpstream();
+
+  // Handle tool listing — session tools + docs upstream tools
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: createTools(),
+    tools: [...createSessionTools(includeDeveloperFeedback), ...docsTools],
   }));
 
-  // Handle tool calls - route to shared handlers
+  // Handle tool calls — route via canonical registry, call_llm, or docs upstream
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: toolArgs } = request.params;
 
     try {
-      switch (name) {
-        case 'SubmitPlan':
-          return await handleSubmitPlan(ctx, toolArgs as { planPath: string });
-
-        case 'config_validate':
-          return await handleConfigValidate(ctx, toolArgs as { target: 'config' | 'sources' | 'statuses' | 'preferences' | 'permissions' | 'tool-icons' | 'all'; sourceSlug?: string });
-
-        case 'skill_validate':
-          return await handleSkillValidate(ctx, toolArgs as { skillSlug: string });
-
-        case 'mermaid_validate':
-          return await handleMermaidValidate(ctx, toolArgs as { code: string });
-
-        case 'source_oauth_trigger':
-          return await handleSourceOAuthTrigger(ctx, toolArgs as { sourceSlug: string });
-
-        case 'source_google_oauth_trigger':
-          return await handleGoogleOAuthTrigger(ctx, toolArgs as { sourceSlug: string });
-
-        case 'source_slack_oauth_trigger':
-          return await handleSlackOAuthTrigger(ctx, toolArgs as { sourceSlug: string });
-
-        case 'source_microsoft_oauth_trigger':
-          return await handleMicrosoftOAuthTrigger(ctx, toolArgs as { sourceSlug: string });
-
-        case 'source_credential_prompt':
-          return await handleCredentialPrompt(ctx, toolArgs as {
-            sourceSlug: string;
-            mode: 'bearer' | 'basic' | 'header' | 'query';
-            labels?: { credential?: string; username?: string; password?: string };
-            description?: string;
-            hint?: string;
-            passwordRequired?: boolean;
-          });
-
-        case 'source_test':
-          return await handleSourceTest(ctx, toolArgs as { sourceSlug: string });
-
-        case 'call_llm': {
-          // Primary path: PreToolUse intercept injects _precomputedResult (works on Codex).
-          const args = toolArgs as Record<string, unknown>;
-          const precomputed = args?._precomputedResult as string | undefined;
-
-          if (precomputed) {
-            try {
-              const parsed = JSON.parse(precomputed);
-              if (parsed.error) {
-                return errorResponse(`call_llm failed: ${parsed.error}`);
-              }
-              if (parsed.text !== undefined) {
-                return {
-                  content: [{ type: 'text' as const, text: parsed.text || '(Model returned empty response)' }],
-                };
-              }
-              return errorResponse('call_llm: _precomputedResult has unexpected format (missing text field).');
-            } catch {
-              return errorResponse(`call_llm: Failed to parse _precomputedResult: ${precomputed.slice(0, 200)}`);
-            }
-          }
-
-          // Fallback path: HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
-          // Uses callbackPort from CLI arg (--callback-port) or env var (CRAFT_LLM_CALLBACK_PORT).
-          if (config.callbackPort) {
-            try {
-              const resp = await fetch(`http://127.0.0.1:${config.callbackPort}/call-llm`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(args),
-                signal: AbortSignal.timeout(30000),
-              });
-              const result = await resp.json() as { text?: string; model?: string; error?: string };
-              if (result.error) {
-                return errorResponse(`call_llm failed: ${result.error}`);
-              }
-              return {
-                content: [{ type: 'text' as const, text: result.text || '(Model returned empty response)' }],
-              };
-            } catch (err) {
-              return errorResponse(`call_llm callback failed: ${err instanceof Error ? err.message : String(err)}`);
-            }
-          }
-
-          return errorResponse(
-            'call_llm requires either PreToolUse intercept (_precomputedResult) or ' +
-            'HTTP callback (CRAFT_LLM_CALLBACK_PORT). Neither is available.'
-          );
-        }
-
-        default:
-          return errorResponse(`Unknown tool: ${name}`);
+      // call_llm has backend-specific execution (precomputed result / HTTP callback)
+      if (name === 'call_llm') {
+        return await handleCallLlm(toolArgs as Record<string, unknown>, config);
       }
+
+      // spawn_session has backend-specific execution (precomputed result / HTTP callback)
+      if (name === 'spawn_session') {
+        return await handleSpawnSession(toolArgs as Record<string, unknown>, config);
+      }
+
+      // Check canonical session tool registry first (feature-filtered)
+      const def = sessionToolRegistry.get(name);
+      if (def?.handler) {
+        return await def.handler(ctx, toolArgs);
+      }
+
+      // Route to docs upstream if it's a docs tool
+      if (isDocsUpstreamTool(name)) {
+        return await callDocsUpstream(name, toolArgs as Record<string, unknown>);
+      }
+
+      return errorResponse(`Unknown tool: ${name}`);
     } catch (error) {
       return errorResponse(
         `Tool '${name}' failed: ${error instanceof Error ? error.message : String(error)}`
@@ -693,7 +567,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.error(`Session MCP Server started for session ${sessionId}`);
+  console.error(`Session MCP Server started for session ${sessionId} (developerFeedback=${includeDeveloperFeedback})`);
 }
 
 main().catch((error) => {

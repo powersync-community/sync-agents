@@ -434,6 +434,98 @@ describe('ClaudeEventAdapter', () => {
         message: 'Compacting conversation...',
       });
     });
+
+    it('should emit task_completed for task_notification', async () => {
+      adapter.startTurn();
+      const events = await adapter.adapt({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'agent-abc123',
+        status: 'completed',
+        output_file: '/tmp/task-output.txt',
+        summary: 'Found 3 matching files',
+        session_id: 'sess-1',
+      } as any);
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'task_completed',
+        taskId: 'agent-abc123',
+        status: 'completed',
+        outputFile: '/tmp/task-output.txt',
+        summary: 'Found 3 matching files',
+      });
+    });
+
+    it('should handle task_notification with failed status', async () => {
+      adapter.startTurn();
+      const events = await adapter.adapt({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'agent-xyz',
+        status: 'failed',
+        output_file: '/tmp/task-error.txt',
+        summary: 'Task failed with error',
+        session_id: 'sess-1',
+      } as any);
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'task_completed',
+        taskId: 'agent-xyz',
+        status: 'failed',
+      });
+    });
+
+    it('should handle task_notification with stopped status', async () => {
+      adapter.startTurn();
+      const events = await adapter.adapt({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'agent-stopped',
+        status: 'stopped',
+        summary: 'User stopped the task',
+        session_id: 'sess-1',
+      } as any);
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'task_completed',
+        taskId: 'agent-stopped',
+        status: 'stopped',
+      });
+    });
+
+    it('should skip task_notification with missing task_id', async () => {
+      adapter.startTurn();
+      const events = await adapter.adapt({
+        type: 'system',
+        subtype: 'task_notification',
+        // task_id intentionally missing
+        status: 'completed',
+        session_id: 'sess-1',
+      } as any);
+
+      expect(events).toHaveLength(0);
+    });
+
+    it('should default to completed for unknown task_notification status', async () => {
+      adapter.startTurn();
+      const events = await adapter.adapt({
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'agent-unknown',
+        status: 'some_future_status',
+        session_id: 'sess-1',
+      } as any);
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'task_completed',
+        taskId: 'agent-unknown',
+        status: 'completed', // defaults to completed for unknown statuses
+      });
+    });
   });
 
   describe('auth_status', () => {

@@ -1,7 +1,13 @@
-// Types shared between main and renderer processes
-// Core types are re-exported from @craft-agent/core
+// =============================================================================
+// Protocol re-exports (channels, DTOs, events, wire types)
+// =============================================================================
+export * from '@craft-agent/shared/protocol'
 
-// Import and re-export core types
+// =============================================================================
+// Package re-exports (convenience for renderer imports)
+// =============================================================================
+
+// Core types
 import type {
   Message as CoreMessage,
   MessageRole as CoreMessageRole,
@@ -12,14 +18,15 @@ import type {
   StoredAttachment as CoreStoredAttachment,
   ContentBadge,
   ToolDisplayMeta,
+  AnnotationV1,
 } from '@craft-agent/core/types';
 
-// Import mode types from dedicated subpath export (avoids pulling in SDK)
+// Mode types from dedicated subpath export (avoids pulling in SDK)
 import type { PermissionMode } from '@craft-agent/shared/agent/modes';
 export type { PermissionMode };
 export { PERMISSION_MODE_CONFIG } from '@craft-agent/shared/agent/modes';
 
-// Import thinking level types
+// Thinking level types
 import type { ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels';
 export type { ThinkingLevel };
 export { THINKING_LEVELS, DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels';
@@ -34,33 +41,31 @@ export type {
   CoreStoredAttachment as StoredAttachment,
   ContentBadge,
   ToolDisplayMeta,
+  AnnotationV1,
 };
 
-// Import and re-export auth types for onboarding
-// Use types-only subpaths to avoid pulling in Node.js dependencies
+// Auth types for onboarding
 import type { AuthState, SetupNeeds } from '@craft-agent/shared/auth/types';
 import type { AuthType } from '@craft-agent/shared/config/types';
 export type { AuthState, SetupNeeds, AuthType };
 
-// Import and re-export credential health types
+// Credential health types
 import type { CredentialHealthStatus, CredentialHealthIssue, CredentialHealthIssueType } from '@craft-agent/shared/credentials/types';
 export type { CredentialHealthStatus, CredentialHealthIssue, CredentialHealthIssueType };
 
-// Import source types for session source selection
+// Source types for session source selection
 import type { LoadedSource, FolderSourceConfig, SourceConnectionStatus } from '@craft-agent/shared/sources/types';
 export type { LoadedSource, FolderSourceConfig, SourceConnectionStatus };
 
-// Import skill types
+// Skill types
 import type { LoadedSkill, SkillMetadata } from '@craft-agent/shared/skills/types';
 export type { LoadedSkill, SkillMetadata };
 
-// Import session types from shared (for SessionFamily - different from core SessionMetadata)
+// Session types from shared (for SessionFamily - different from core SessionMetadata)
 import type { SessionMetadata as SharedSessionMetadata } from '@craft-agent/shared/sessions/types';
-
-// Import LLM connection types
-import type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType } from '@craft-agent/shared/config';
-export type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType };
-
+// LLM connection types
+import type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType, NetworkProxySettings } from '@craft-agent/shared/config';
+export type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType, NetworkProxySettings };
 /**
  * Setup data for creating/updating an LLM connection via IPC.
  * Combines connection identity with credential (which isn't stored in config).
@@ -80,13 +85,13 @@ export interface SupabaseAuthState {
   user: {
     id: string
     email?: string
-    emailConfirmedAt?: string
   } | null
+    emailConfirmedAt?: string
 }
 
 export interface CloudWorkspace {
-  id: string
   name: string
+  id: string
   createdAt: string
   role?: string
 }
@@ -129,8 +134,8 @@ export interface SkillFile {
  * Supports recursive tree structure with children for directories
  */
 export interface SessionFile {
-  name: string
   path: string
+  name: string
   type: 'file' | 'directory'
   size?: number
   children?: SessionFile[]  // Recursive children for directories
@@ -542,13 +547,26 @@ export interface SendMessageOptions {
 }
 
 // =============================================================================
-// IPC Command Pattern Types
+// GUI-only types (not used by server/handler code)
 // =============================================================================
 
 /**
- * SessionCommand - Consolidated session operations
- * Replaces individual IPC calls: flag, unflag, rename, setSessionStatus, etc.
+ * Browser toolbar window IPC channels (preload <-> BrowserPaneManager).
+ * Kept separate from RPC_CHANNELS because these are scoped to toolbar windows.
  */
+export const BROWSER_TOOLBAR_CHANNELS = {
+  NAVIGATE: 'browser-toolbar:navigate',
+  GO_BACK: 'browser-toolbar:go-back',
+  GO_FORWARD: 'browser-toolbar:go-forward',
+  RELOAD: 'browser-toolbar:reload',
+  STOP: 'browser-toolbar:stop',
+  OPEN_MENU: 'browser-toolbar:open-menu',
+  HIDE: 'browser-toolbar:hide',
+  DESTROY: 'browser-toolbar:destroy',
+  STATE_UPDATE: 'browser-toolbar:state-update',
+  THEME_COLOR: 'browser-toolbar:theme-color',
+} as const
+
 export type SessionCommand =
   | { type: 'flag' }
   | { type: 'unflag' }
@@ -912,9 +930,6 @@ export const IPC_CHANNELS = {
   MENU_SELECT_ALL: 'menu:selectAll',
 } as const
 
-// Re-import types for ElectronAPI
-import type { Workspace, SessionMetadata, StoredAttachment as StoredAttachmentType } from '@craft-agent/core/types';
-
 /** Tool icon mapping entry from tool-icons.json (with icon resolved to data URL) */
 export interface ToolIconMapping {
   id: string
@@ -924,26 +939,138 @@ export interface ToolIconMapping {
   commands: string[]
 }
 
-// Type-safe IPC API exposed to renderer
+/**
+ * Browser pane creation options
+ */
+export interface BrowserPaneCreateOptions {
+  id?: string
+  show?: boolean
+  bindToSessionId?: string
+}
+
+/**
+ * Empty-state launch request from the browser empty-state renderer.
+ */
+export interface BrowserEmptyStateLaunchPayload {
+  route: string
+  token?: string
+}
+
+/**
+ * Result of browser empty-state launch handling.
+ */
+export interface BrowserEmptyStateLaunchResult {
+  ok: boolean
+  handled: boolean
+  reason?: string
+}
+
+export type TransportMode = 'local' | 'remote'
+
+export type TransportConnectionStatus =
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'disconnected'
+  | 'failed'
+
+export type TransportConnectionErrorKind =
+  | 'auth'
+  | 'protocol'
+  | 'timeout'
+  | 'network'
+  | 'server'
+  | 'unknown'
+
+export interface TransportConnectionError {
+  kind: TransportConnectionErrorKind
+  message: string
+  code?: string
+}
+
+export interface TransportCloseInfo {
+  code?: number
+  reason?: string
+  wasClean?: boolean
+}
+
+export interface TransportConnectionState {
+  mode: TransportMode
+  status: TransportConnectionStatus
+  url: string
+  attempt: number
+  nextRetryInMs?: number
+  lastError?: TransportConnectionError
+  lastClose?: TransportCloseInfo
+  updatedAt: number
+}
+
+// =============================================================================
+// ElectronAPI — type-safe IPC API exposed to renderer
+// =============================================================================
+
+// Re-import types for ElectronAPI
+import type { Workspace, SessionMetadata, StoredAttachment as StoredAttachmentType } from '@craft-agent/core/types';
+
+// Import protocol types used by ElectronAPI (they come through the `export *` above,
+// but we need them in scope for the interface definition)
+import type {
+  Session,
+  UnreadSummary,
+  CreateSessionOptions,
+  FileAttachment,
+  SendMessageOptions,
+  SessionEvent,
+  PermissionResponseOptions,
+  CredentialResponse,
+  SessionCommand,
+  ShareResult,
+  RefreshTitleResult,
+  FileSearchResult,
+  SessionSearchResult,
+  LlmConnectionSetup,
+  TestLlmConnectionParams,
+  TestLlmConnectionResult,
+  SkillFile,
+  SessionFile,
+  OAuthResult,
+  McpToolsResult,
+  GitBashStatus,
+  ClaudeOAuthResult,
+  UpdateInfo,
+  WorkspaceSettings,
+  PermissionModeState,
+  BrowserInstanceInfo,
+  DeepLinkNavigation,
+  TestAutomationPayload,
+  TestAutomationResult,
+  WindowCloseRequest,
+  DirectoryListingResult,
+} from '@craft-agent/shared/protocol'
+
 export interface ElectronAPI {
   // Session management
   getSessions(): Promise<Session[]>
+  getUnreadSummary(): Promise<UnreadSummary>
+  markAllSessionsRead(workspaceId: string): Promise<void>
   getSessionMessages(sessionId: string): Promise<Session | null>
   createSession(workspaceId: string, options?: CreateSessionOptions): Promise<Session>
-  createSubSession(workspaceId: string, parentSessionId: string, options?: CreateSessionOptions): Promise<Session>
   deleteSession(sessionId: string): Promise<void>
   sendMessage(sessionId: string, message: string, attachments?: FileAttachment[], storedAttachments?: StoredAttachmentType[], options?: SendMessageOptions): Promise<void>
   cancelProcessing(sessionId: string, silent?: boolean): Promise<void>
   killShell(sessionId: string, shellId: string): Promise<{ success: boolean; error?: string }>
   getTaskOutput(taskId: string): Promise<string | null>
-  respondToPermission(sessionId: string, requestId: string, allowed: boolean, alwaysAllow: boolean): Promise<boolean>
+  respondToPermission(sessionId: string, requestId: string, allowed: boolean, alwaysAllow: boolean, options?: PermissionResponseOptions): Promise<boolean>
   respondToCredential(sessionId: string, requestId: string, response: CredentialResponse): Promise<boolean>
 
   // Consolidated session command handler
-  sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ShareResult | RefreshTitleResult | SessionFamily | { count: number }>
+  sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ShareResult | RefreshTitleResult | { count: number }>
 
   // Pending plan execution (for reload recovery)
-  getPendingPlanExecution(sessionId: string): Promise<{ planPath: string; awaitingCompaction: boolean } | null>
+  getPendingPlanExecution(sessionId: string): Promise<{ planPath: string; draftInputSnapshot?: string; awaitingCompaction: boolean } | null>
+  // Permission mode reconciliation
+  getSessionPermissionModeState(sessionId: string): Promise<PermissionModeState | null>
 
   // Workspace management
   getWorkspaces(): Promise<Workspace[]>
@@ -958,13 +1085,16 @@ export interface ElectronAPI {
   switchWorkspace(workspaceId: string): Promise<void>
   closeWindow(): Promise<void>
   confirmCloseWindow(): Promise<void>
-  /** Listen for close requests (X button, Cmd+W). Returns cleanup function. */
-  onCloseRequested(callback: () => void): () => void
+  /** Cancel a pending close request (renderer handled it by closing a modal/panel). */
+  cancelCloseWindow(): Promise<void>
+  /** Listen for close requests and receive source metadata. Returns cleanup function. */
+  onCloseRequested(callback: (request: WindowCloseRequest) => void): () => void
   /** Show/hide macOS traffic light buttons (for fullscreen overlays) */
   setTrafficLightsVisible(visible: boolean): Promise<void>
 
   // Event listeners
   onSessionEvent(callback: (event: SessionEvent) => void): () => void
+  onUnreadSummaryChanged(callback: (summary: UnreadSummary) => void): () => void
 
   // File operations
   readFile(path: string): Promise<string>
@@ -979,6 +1109,9 @@ export interface ElectronAPI {
 
   // Filesystem search (for @ mention file selection)
   searchFiles(basePath: string, query: string): Promise<FileSearchResult[]>
+
+  // Server filesystem browsing (remote mode)
+  listServerDirectory(dirPath: string): Promise<DirectoryListingResult>
   // Debug: send renderer logs to main process log file
   debugLog(...args: unknown[]): void
 
@@ -990,6 +1123,17 @@ export interface ElectronAPI {
   getVersions(): { node: string; chrome: string; electron: string }
   getHomeDir(): Promise<string>
   isDebugMode(): Promise<boolean>
+
+  // Transport connection status (preload-local, not RPC channels)
+  getTransportConnectionState(): Promise<TransportConnectionState>
+  onTransportConnectionStateChanged(callback: (state: TransportConnectionState) => void): () => void
+  reconnectTransport(): Promise<void>
+
+  /** Fired after a WebSocket reconnect. isStale=true means buffer was evicted — full refresh needed. */
+  onReconnected(callback: (isStale: boolean) => void): () => void
+
+  /** Check whether the server registered a handler for a given RPC channel. */
+  isChannelAvailable(channel: string): boolean
 
   // Auto-update
   checkForUpdates(): Promise<UpdateInfo>
@@ -1003,6 +1147,9 @@ export interface ElectronAPI {
   // Release notes
   getReleaseNotes(): Promise<string>
   getLatestReleaseVersion(): Promise<string | undefined>
+
+  // System warnings (startup checks)
+  getSystemWarnings(): Promise<{ vcredistMissing: boolean; downloadUrl?: string }>
 
   // Shell operations
   openUrl(url: string): Promise<void>
@@ -1041,15 +1188,16 @@ export interface ElectronAPI {
   // Onboarding
   getAuthState(): Promise<AuthState>
   getSetupNeeds(): Promise<SetupNeeds>
-  startWorkspaceMcpOAuth(mcpUrl: string): Promise<OAuthResult & { accessToken?: string; clientId?: string }>
+  startWorkspaceMcpOAuth(mcpUrl: string): Promise<OAuthResult & { clientId?: string }>
   // Claude OAuth (two-step flow)
   startClaudeOAuth(): Promise<{ success: boolean; authUrl?: string; error?: string }>
   exchangeClaudeCode(code: string, connectionSlug: string): Promise<ClaudeOAuthResult>
   hasClaudeOAuthState(): Promise<boolean>
   clearClaudeOAuthState(): Promise<{ success: boolean }>
+  /** Defer onboarding setup — user chose "Setup later" */
+  deferSetup(): Promise<{ success: boolean }>
 
   // ChatGPT OAuth (for Codex chatgptAuthTokens mode)
-  // Note: startChatGptOAuth opens browser and completes full OAuth flow internally
   startChatGptOAuth(connectionSlug: string): Promise<{ success: boolean; error?: string }>
   cancelChatGptOAuth(): Promise<{ success: boolean }>
   getChatGptAuthStatus(connectionSlug: string): Promise<{ authenticated: boolean; expiresAt?: number; hasRefreshToken?: boolean }>
@@ -1064,8 +1212,12 @@ export interface ElectronAPI {
 
   /** Unified LLM connection setup */
   setupLlmConnection(setup: LlmConnectionSetup): Promise<{ success: boolean; error?: string }>
-  testApiConnection(apiKey: string, baseUrl?: string, models?: string[]): Promise<{ success: boolean; error?: string; modelCount?: number }>
-  testOpenAiConnection(apiKey: string, baseUrl?: string, models?: string[]): Promise<{ success: boolean; error?: string }>
+  /** Unified connection test — spawns a lightweight agent subprocess to validate credentials */
+  testLlmConnectionSetup(params: TestLlmConnectionParams): Promise<TestLlmConnectionResult>
+  // Pi provider discovery (main process only — Pi SDK can't run in renderer)
+  getPiApiKeyProviders(): Promise<Array<{ key: string; label: string; placeholder: string }>>
+  getPiProviderBaseUrl(provider: string): Promise<string | undefined>
+  getPiProviderModels(provider: string): Promise<{ models: Array<{ id: string; name: string; costInput: number; costOutput: number; contextWindow: number; reasoning: boolean }>; totalCount: number }>
 
   // Session-specific model (overrides global)
   getSessionModel(sessionId: string, workspaceId: string): Promise<string | null>
@@ -1100,18 +1252,22 @@ export interface ElectronAPI {
   getSources(workspaceId: string): Promise<LoadedSource[]>
   createSource(workspaceId: string, config: Partial<FolderSourceConfig>): Promise<FolderSourceConfig>
   deleteSource(workspaceId: string, sourceSlug: string): Promise<void>
-  startSourceOAuth(workspaceId: string, sourceSlug: string): Promise<{ success: boolean; error?: string; accessToken?: string }>
+  startSourceOAuth(workspaceId: string, sourceSlug: string): Promise<{ success: boolean; error?: string }>
   saveSourceCredentials(workspaceId: string, sourceSlug: string, credential: string): Promise<void>
   getSourcePermissionsConfig(workspaceId: string, sourceSlug: string): Promise<import('@craft-agent/shared/agent').PermissionsConfigFile | null>
   getWorkspacePermissionsConfig(workspaceId: string): Promise<import('@craft-agent/shared/agent').PermissionsConfigFile | null>
   getDefaultPermissionsConfig(): Promise<{ config: import('@craft-agent/shared/agent').PermissionsConfigFile | null; path: string }>
   getMcpTools(workspaceId: string, sourceSlug: string): Promise<McpToolsResult>
 
+  // OAuth (server-owned credentials, client-orchestrated flow)
+  performOAuth(args: { sourceSlug: string; sessionId?: string; authRequestId?: string }): Promise<{ success: boolean; error?: string; email?: string }>
+  oauthRevoke(sourceSlug: string): Promise<{ success: boolean }>
+
   // Session content search (full-text search via ripgrep)
   searchSessionContent(workspaceId: string, query: string, searchId?: string): Promise<SessionSearchResult[]>
 
   // Sources change listener (live updates when sources are added/removed)
-  onSourcesChanged(callback: (sources: LoadedSource[]) => void): () => void
+  onSourcesChanged(callback: (workspaceId: string, sources: LoadedSource[]) => void): () => void
 
   // Default permissions change listener (live updates when default.json changes)
   onDefaultPermissionsChanged(callback: () => void): () => void
@@ -1124,51 +1280,47 @@ export interface ElectronAPI {
   openSkillInFinder(workspaceId: string, skillSlug: string): Promise<void>
 
   // Skills change listener (live updates when skills are added/removed/modified)
-  onSkillsChanged(callback: (skills: LoadedSkill[]) => void): () => void
+  onSkillsChanged(callback: (workspaceId: string, skills: LoadedSkill[]) => void): () => void
 
   // Statuses (workspace-scoped)
   listStatuses(workspaceId: string): Promise<import('@craft-agent/shared/statuses').StatusConfig[]>
   reorderStatuses(workspaceId: string, orderedIds: string[]): Promise<void>
-  // Statuses change listener (live updates when statuses config or icon files change)
   onStatusesChanged(callback: (workspaceId: string) => void): () => void
 
   // Labels (workspace-scoped)
   listLabels(workspaceId: string): Promise<import('@craft-agent/shared/labels').LabelConfig[]>
   createLabel(workspaceId: string, input: import('@craft-agent/shared/labels').CreateLabelInput): Promise<import('@craft-agent/shared/labels').LabelConfig>
   deleteLabel(workspaceId: string, labelId: string): Promise<{ stripped: number }>
-  // Labels change listener (live updates when labels config changes)
   onLabelsChanged(callback: (workspaceId: string) => void): () => void
 
-  // LLM connections change listener (live updates when models are fetched or connections are modified)
+  // LLM connections change listener
   onLlmConnectionsChanged(callback: () => void): () => void
 
   // Views (workspace-scoped, stored in views.json)
   listViews(workspaceId: string): Promise<import('@craft-agent/shared/views').ViewConfig[]>
   saveViews(workspaceId: string, views: import('@craft-agent/shared/views').ViewConfig[]): Promise<void>
 
-  // Generic workspace image loading/saving (returns data URL for images, raw string for SVG)
+  // Generic workspace image loading/saving
   readWorkspaceImage(workspaceId: string, relativePath: string): Promise<string>
   writeWorkspaceImage(workspaceId: string, relativePath: string, base64: string, mimeType: string): Promise<void>
 
-  // Tool icon mappings (for Appearance settings page)
+  // Tool icon mappings
   getToolIconMappings(): Promise<ToolIconMapping[]>
 
   // Theme (app-level default)
   getAppTheme(): Promise<import('@config/theme').ThemeOverrides | null>
-  // Preset themes (app-level)
   loadPresetThemes(): Promise<import('@config/theme').PresetTheme[]>
   loadPresetTheme(themeId: string): Promise<import('@config/theme').PresetTheme | null>
   getColorTheme(): Promise<string>
   setColorTheme(themeId: string): Promise<void>
-  // Workspace-level theme overrides
   getWorkspaceColorTheme(workspaceId: string): Promise<string | null>
   setWorkspaceColorTheme(workspaceId: string, themeId: string | null): Promise<void>
   getAllWorkspaceThemes(): Promise<Record<string, string | undefined>>
 
-  // Theme change listeners (live updates when theme.json files change)
+  // Theme change listeners
   onAppThemeChange(callback: (theme: import('@config/theme').ThemeOverrides | null) => void): () => void
 
-  // Logo URL resolution (uses Node.js filesystem cache for provider domains)
+  // Logo URL resolution
   getLogoUrl(serviceUrl: string, provider?: string): Promise<string | null>
 
   // Notifications
@@ -1192,15 +1344,25 @@ export interface ElectronAPI {
   getRichToolDescriptions(): Promise<boolean>
   setRichToolDescriptions(enabled: boolean): Promise<void>
 
-  updateBadgeCount(count: number): Promise<void>
-  clearBadgeCount(): Promise<void>
+  // Prompt caching & context
+  getExtendedPromptCache(): Promise<boolean>
+  setExtendedPromptCache(enabled: boolean): Promise<void>
+  getEnable1MContext(): Promise<boolean>
+  setEnable1MContext(enabled: boolean): Promise<void>
+
+  // Network proxy settings
+  getNetworkProxySettings(): Promise<NetworkProxySettings | undefined>
+  setNetworkProxySettings(settings: NetworkProxySettings): Promise<void>
+
+  refreshBadge(): Promise<void>
   setDockIconWithBadge(dataUrl: string): Promise<void>
   onBadgeDraw(callback: (data: { count: number; iconDataUrl: string }) => void): () => void
+  onBadgeDrawWindows(callback: (data: { count: number }) => void): () => void
   getWindowFocusState(): Promise<boolean>
   onWindowFocusChange(callback: (isFocused: boolean) => void): () => void
   onNotificationNavigate(callback: (data: { workspaceId: string; sessionId: string }) => void): () => void
 
-  // Theme preferences sync across windows (mode, colorTheme, font)
+  // Theme preferences sync across windows
   broadcastThemePreferences(preferences: { mode: string; colorTheme: string; font: string }): Promise<void>
   onThemePreferencesChange(callback: (preferences: { mode: string; colorTheme: string; font: string }) => void): () => void
 
@@ -1232,101 +1394,65 @@ export interface ElectronAPI {
   menuPaste(): Promise<void>
   menuSelectAll(): Promise<void>
 
+  // Browser pane management
+  browserPane: {
+    create(input?: string | BrowserPaneCreateOptions): Promise<string>
+    destroy(id: string): Promise<void>
+    list(): Promise<BrowserInstanceInfo[]>
+    navigate(id: string, url: string): Promise<{ url: string; title: string }>
+    goBack(id: string): Promise<void>
+    goForward(id: string): Promise<void>
+    reload(id: string): Promise<void>
+    stop(id: string): Promise<void>
+    focus(id: string): Promise<void>
+    emptyStateLaunch(payload: BrowserEmptyStateLaunchPayload): Promise<BrowserEmptyStateLaunchResult>
+    onStateChanged(callback: (info: BrowserInstanceInfo) => void): () => void
+    onRemoved(callback: (id: string) => void): () => void
+    onInteracted(callback: (id: string) => void): () => void
+  }
+
   // LLM Connections (provider configurations)
   listLlmConnections(): Promise<LlmConnection[]>
   listLlmConnectionsWithStatus(): Promise<LlmConnectionWithStatus[]>
   getLlmConnection(slug: string): Promise<LlmConnection | null>
+  getLlmConnectionApiKey(slug: string): Promise<string | null>
   saveLlmConnection(connection: LlmConnection): Promise<{ success: boolean; error?: string }>
   deleteLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
   testLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
   setDefaultLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
+  getDefaultThinkingLevel(): Promise<ThinkingLevel>
+  setDefaultThinkingLevel(level: ThinkingLevel): Promise<{ success: boolean; error?: string }>
   setWorkspaceDefaultLlmConnection(workspaceId: string, slug: string | null): Promise<{ success: boolean; error?: string }>
+
+  // Automation testing (manual trigger)
+  testAutomation(payload: TestAutomationPayload): Promise<TestAutomationResult>
+
+  // Automation state management
+  setAutomationEnabled(workspaceId: string, eventName: string, matcherIndex: number, enabled: boolean): Promise<void>
+  duplicateAutomation(workspaceId: string, eventName: string, matcherIndex: number): Promise<void>
+  deleteAutomation(workspaceId: string, eventName: string, matcherIndex: number): Promise<void>
+  getAutomationHistory(workspaceId: string, automationId: string, limit?: number): Promise<Array<{ id: string; ts: number; ok: boolean; sessionId?: string; prompt?: string; error?: string; webhook?: { method: string; url: string; statusCode: number; durationMs: number; attempts?: number; error?: string; responseBody?: string } }>>
+  getAutomationLastExecuted(workspaceId: string): Promise<Record<string, number>>
+  replayAutomation(workspaceId: string, automationId: string, eventName: string): Promise<{ results: Array<{ type: string; url: string; statusCode: number; success: boolean; error?: string; duration: number }> }>
+
+  // Automations change listener
+  onAutomationsChanged(callback: (workspaceId: string) => void): () => void
 }
 
-/**
- * Result from Claude OAuth (setup-token) flow
- */
-export interface ClaudeOAuthResult {
-  success: boolean
-  token?: string
-  error?: string
-}
-
-/**
- * Current API setup info for settings
- */
-/**
- * Auto-update information
- */
-export interface UpdateInfo {
-  /** Whether an update is available */
-  available: boolean
-  /** Current installed version */
-  currentVersion: string
-  /** Latest available version (null if check failed) */
-  latestVersion: string | null
-  /** Download state */
-  downloadState: 'idle' | 'downloading' | 'ready' | 'installing' | 'error'
-  /** Download progress (0-100) */
-  downloadProgress: number
-  /** Error message if download/install failed */
-  error?: string
-}
-
-/**
- * Per-workspace settings
- */
-export interface WorkspaceSettings {
-  name?: string
-  model?: string
-  permissionMode?: PermissionMode
-  /** Permission modes available for SHIFT+TAB cycling (min 2 modes) */
-  cyclablePermissionModes?: PermissionMode[]
-  /** Default thinking level for new sessions ('off', 'think', 'max'). Defaults to 'think'. */
-  thinkingLevel?: ThinkingLevel
-  workingDirectory?: string
-  /** Whether local (stdio) MCP servers are enabled */
-  localMcpEnabled?: boolean
-  /** Default LLM connection slug for new sessions in this workspace */
-  defaultLlmConnection?: string
-  /** Source slugs to auto-enable for new sessions */
-  enabledSourceSlugs?: string[]
-}
-
-/**
- * Navigation payload for deep links (main → renderer)
- */
-export interface DeepLinkNavigation {
-  /** Compound route format (e.g., 'allSessions/session/abc123', 'settings/shortcuts') */
-  view?: string
-  /** Tab type */
-  tabType?: string
-  tabParams?: Record<string, string>
-  action?: string
-  actionParams?: Record<string, string>
-}
-
-// ============================================
-// Unified Navigation State Types
-// ============================================
+// =============================================================================
+// Navigation types (renderer-only)
+// =============================================================================
 
 /**
  * Right sidebar panel types
- * Defines the content displayed in the right sidebar
  */
 export type RightSidebarPanel =
-  | { type: 'sessionMetadata' }
   | { type: 'files'; path?: string }
   | { type: 'history' }
   | { type: 'none' }
 
 /**
- * Session filter options - determines which sessions to show
- * - 'allSessions': All sessions regardless of status (excludes archived)
- * - 'flagged': Only flagged sessions
- * - 'state': Sessions with specific status ID
- * - 'label': Sessions with specific label (includes descendants via tree hierarchy)
- * - 'archived': Only archived sessions
+ * Session filter options
  */
 export type SessionFilter =
   | { kind: 'allSessions' }
@@ -1343,19 +1469,17 @@ export type { SettingsSubpage } from './settings-registry'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
 
 /**
- * Sessions navigation state - shows SessionList in navigator
+ * Sessions navigation state
  */
 export interface SessionsNavigationState {
   navigator: 'sessions'
   filter: SessionFilter
-  /** Selected session details, or null for empty state */
   details: { type: 'session'; sessionId: string } | null
-  /** Optional right sidebar panel state */
   rightSidebar?: RightSidebarPanel
 }
 
 /**
- * Source type filter for sources navigation (e.g., show only APIs, MCPs, or Local sources)
+ * Source type filter for sources navigation
  */
 export interface SourceFilter {
   kind: 'type'
@@ -1363,94 +1487,87 @@ export interface SourceFilter {
 }
 
 /**
- * Sources navigation state - shows SourcesListPanel in navigator
+ * Automation type filter for automations navigation
+ */
+export interface AutomationFilter {
+  kind: 'type'
+  automationType: 'scheduled' | 'event' | 'agentic'
+}
+
+/**
+ * Sources navigation state
  */
 export interface SourcesNavigationState {
   navigator: 'sources'
-  /** Optional filter for source type */
   filter?: SourceFilter
-  /** Selected source details, or null for empty state */
   details: { type: 'source'; sourceSlug: string } | null
-  /** Optional right sidebar panel state */
   rightSidebar?: RightSidebarPanel
 }
 
 /**
- * Settings navigation state - shows SettingsNavigator in navigator
- * Settings subpages are the details themselves (no separate selection)
+ * Settings navigation state
  */
 export interface SettingsNavigationState {
   navigator: 'settings'
   subpage: SettingsSubpage
-  /** Optional right sidebar panel state */
   rightSidebar?: RightSidebarPanel
 }
 
 /**
- * Skills navigation state - shows SkillsListPanel in navigator
+ * Skills navigation state
  */
 export interface SkillsNavigationState {
   navigator: 'skills'
-  /** Selected skill details or null for empty state */
   details: { type: 'skill'; skillSlug: string } | null
-  /** Optional right sidebar panel state */
   rightSidebar?: RightSidebarPanel
 }
 
 /**
- * Unified navigation state - single source of truth for all 3 panels
- *
- * From this state we can derive:
- * - LeftSidebar: which item is highlighted (from navigator + filter/subpage)
- * - NavigatorPanel: which list/content to show (from navigator)
- * - MainContentPanel: what details to display (from details or subpage)
+ * Automations navigation state
+ */
+export interface AutomationsNavigationState {
+  navigator: 'automations'
+  filter?: AutomationFilter
+  details: { type: 'automation'; automationId: string } | null
+  rightSidebar?: RightSidebarPanel
+}
+
+/**
+ * Unified navigation state
  */
 export type NavigationState =
   | SessionsNavigationState
   | SourcesNavigationState
   | SettingsNavigationState
   | SkillsNavigationState
+  | AutomationsNavigationState
 
-/**
- * Type guard to check if state is sessions navigation
- */
 export const isSessionsNavigation = (
   state: NavigationState
 ): state is SessionsNavigationState => state.navigator === 'sessions'
 
-/**
- * Type guard to check if state is sources navigation
- */
 export const isSourcesNavigation = (
   state: NavigationState
 ): state is SourcesNavigationState => state.navigator === 'sources'
 
-/**
- * Type guard to check if state is settings navigation
- */
 export const isSettingsNavigation = (
   state: NavigationState
 ): state is SettingsNavigationState => state.navigator === 'settings'
 
-/**
- * Type guard to check if state is skills navigation
- */
 export const isSkillsNavigation = (
   state: NavigationState
 ): state is SkillsNavigationState => state.navigator === 'skills'
 
-/**
- * Default navigation state - allSessions with no selection
- */
+export const isAutomationsNavigation = (
+  state: NavigationState
+): state is AutomationsNavigationState => state.navigator === 'automations'
+
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
   filter: { kind: 'allSessions' },
   details: null,
 }
 
-/**
- * Get a persistence key for localStorage from NavigationState
- */
 export const getNavigationStateKey = (state: NavigationState): string => {
   if (state.navigator === 'sources') {
     if (state.details) {
@@ -1463,6 +1580,12 @@ export const getNavigationStateKey = (state: NavigationState): string => {
       return `skills/skill/${state.details.skillSlug}`
     }
     return 'skills'
+  }
+  if (state.navigator === 'automations') {
+    if (state.details?.type === 'automation') {
+      return `automations/automation/${state.details.automationId}`
+    }
+    return 'automations'
   }
   if (state.navigator === 'settings') {
     return `settings:${state.subpage}`
@@ -1480,10 +1603,6 @@ export const getNavigationStateKey = (state: NavigationState): string => {
   return base
 }
 
-/**
- * Parse a persistence key back to NavigationState
- * Returns null if the key is invalid
- */
 export const parseNavigationStateKey = (key: string): NavigationState | null => {
   // Handle sources
   if (key === 'sources') return { navigator: 'sources', details: null }
@@ -1505,6 +1624,16 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
     return { navigator: 'skills', details: null }
   }
 
+  // Handle automations
+  if (key === 'automations') return { navigator: 'automations', details: null }
+  if (key.startsWith('automations/automation/')) {
+    const automationId = key.slice(22)
+    if (automationId) {
+      return { navigator: 'automations', details: { type: 'automation', automationId } }
+    }
+    return { navigator: 'automations', details: null }
+  }
+
   // Handle settings
   if (key === 'settings') return { navigator: 'settings', subpage: 'app' }
   if (key.startsWith('settings:')) {
@@ -1514,7 +1643,7 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
     }
   }
 
-  // Handle sessions - parse filter and optional session
+  // Handle sessions
   const parseSessionsKey = (filterKey: string, sessionId?: string): NavigationState | null => {
     let filter: SessionFilter
     if (filterKey === 'allSessions') filter = { kind: 'allSessions' }
