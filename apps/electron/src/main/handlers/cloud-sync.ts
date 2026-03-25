@@ -116,9 +116,10 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
     const client = supabaseAuthService.getClient()
     if (!client) return []
 
+    // Join through workspace_members to get role (RLS on cloud_workspaces requires membership)
     const { data, error } = await client
-      .from('cloud_workspaces')
-      .select('id, name, created_at, role')
+      .from('workspace_members')
+      .select('role, cloud_workspace_id, cloud_workspaces(id, name, created_at)')
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -126,12 +127,17 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
       return []
     }
 
-    return (data ?? []).map(row => ({
-      id: row.id,
-      name: row.name,
-      createdAt: row.created_at,
-      role: row.role,
-    }))
+    return (data ?? [])
+      .filter(row => row.cloud_workspaces)
+      .map(row => {
+        const ws = row.cloud_workspaces as any
+        return {
+          id: ws.id,
+          name: ws.name,
+          createdAt: ws.created_at,
+          role: row.role,
+        }
+      })
   })
 
   server.handle(RPC_CHANNELS.cloudSync.WORKSPACE_CREATE, async (_ctx, name: string): Promise<{ success: boolean; error?: string; workspace?: CloudWorkspace }> => {
@@ -147,11 +153,21 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
 
     const { data, error } = await client
       .from('cloud_workspaces')
-      .insert({ name, owner_id: authState.user.id })
+      .insert({ name, created_by: authState.user.id })
       .select('id, name, created_at')
       .single()
 
     if (error) return { success: false, error: error.message }
+
+    // Add creator as owner in workspace_members (required for RLS)
+    const { error: memberError } = await client
+      .from('workspace_members')
+      .insert({ cloud_workspace_id: data.id, user_id: authState.user.id, role: 'owner' })
+
+    if (memberError) {
+      console.error('[CloudSync] Failed to add owner membership:', memberError)
+      // Non-fatal: workspace was created, membership can be retried
+    }
 
     return {
       success: true,

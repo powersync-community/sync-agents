@@ -182,7 +182,7 @@ export function OnboardingWizard({
         return (
           <CompletionStep
             status={state.completionStatus}
-            onFinish={onFinish}
+            onFinish={onContinue}
           />
         )
 
