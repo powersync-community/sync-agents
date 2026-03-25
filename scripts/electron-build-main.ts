@@ -58,6 +58,7 @@ function getBuildDefines(): string[] {
     "SUPABASE_URL",
     "SUPABASE_ANON_KEY",
     "POWERSYNC_URL",
+    "CRAFT_CONFIG_DIR",
   ];
 
   return definedVars.map((varName) => {

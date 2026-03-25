@@ -340,6 +340,17 @@ export const CHANNEL_MAP = {
   setDefaultLlmConnection: invoke(RPC_CHANNELS.llmConnections.SET_DEFAULT),
   setWorkspaceDefaultLlmConnection: invoke(RPC_CHANNELS.llmConnections.SET_WORKSPACE_DEFAULT),
 
+  // Cloud sync (experimental)
+  supabaseSignIn: invoke(RPC_CHANNELS.cloudSync.SIGN_IN),
+  supabaseSignUp: invoke(RPC_CHANNELS.cloudSync.SIGN_UP),
+  supabaseSignOut: invoke(RPC_CHANNELS.cloudSync.SIGN_OUT),
+  supabaseGetUser: invoke(RPC_CHANNELS.cloudSync.GET_USER),
+  cloudWorkspaceList: invoke(RPC_CHANNELS.cloudSync.WORKSPACE_LIST),
+  cloudWorkspaceCreate: invoke(RPC_CHANNELS.cloudSync.WORKSPACE_CREATE),
+  cloudWorkspaceLinkLocal: invoke(RPC_CHANNELS.cloudSync.WORKSPACE_LINK_LOCAL),
+  syncGetStatus: invoke(RPC_CHANNELS.cloudSync.GET_STATUS),
+  syncReconnect: invoke(RPC_CHANNELS.cloudSync.RECONNECT),
+
   // Automations
   testAutomation: invoke(RPC_CHANNELS.automations.TEST),
   setAutomationEnabled: invoke(RPC_CHANNELS.automations.SET_ENABLED),

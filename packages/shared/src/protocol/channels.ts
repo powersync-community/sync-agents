@@ -324,6 +324,17 @@ export const RPC_CHANNELS = {
     REMOVED: 'browser-pane:removed',
     INTERACTED: 'browser-pane:interacted',
   },
+  cloudSync: {
+    SIGN_IN: 'cloudSync:signIn',
+    SIGN_UP: 'cloudSync:signUp',
+    SIGN_OUT: 'cloudSync:signOut',
+    GET_USER: 'cloudSync:getUser',
+    WORKSPACE_LIST: 'cloudSync:workspaceList',
+    WORKSPACE_CREATE: 'cloudSync:workspaceCreate',
+    WORKSPACE_LINK_LOCAL: 'cloudSync:workspaceLinkLocal',
+    GET_STATUS: 'cloudSync:getStatus',
+    RECONNECT: 'cloudSync:reconnect',
+  },
   automations: {
     TEST: 'automations:test',
     SET_ENABLED: 'automations:setEnabled',
