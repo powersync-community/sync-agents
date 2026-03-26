@@ -30,7 +30,6 @@ const DEFAULT_TOKEN_USAGE: SessionTokenUsage = {
  * These are session properties visible to all teammates.
  */
 interface SyncedSessionMetadata {
-  permissionMode?: string
   thinkingLevel?: string
   model?: string
   llmConnection?: string
@@ -47,7 +46,7 @@ interface SyncedSessionMetadata {
 }
 
 const SYNCED_METADATA_KEYS: (keyof SyncedSessionMetadata)[] = [
-  'permissionMode', 'thinkingLevel', 'model', 'llmConnection', 'connectionLocked',
+  'thinkingLevel', 'model', 'llmConnection', 'connectionLocked',
   'isFlagged', 'sessionStatus', 'labels', 'enabledSourceSlugs',
   'sharedUrl', 'sharedId', 'parentSessionId', 'siblingOrder', 'hidden',
 ]
@@ -129,7 +128,6 @@ export class CloudSessionStorage {
 
     // Build synced metadata from options
     const metadata: SyncedSessionMetadata = {}
-    if (options?.permissionMode) metadata.permissionMode = options.permissionMode
     if (options?.model) metadata.model = options.model
     if (options?.enabledSourceSlugs) metadata.enabledSourceSlugs = options.enabledSourceSlugs
     if (options?.hidden) metadata.hidden = options.hidden
@@ -154,6 +152,7 @@ export class CloudSessionStorage {
     const localState: SessionLocalState = {
       sdkCwd,
       workingDirectory: options?.workingDirectory,
+      permissionMode: options?.permissionMode,
     }
     saveLocalState(this.workspaceRootPath, id, localState)
 
@@ -230,6 +229,7 @@ export class CloudSessionStorage {
       hasUnread: session.hasUnread,
       lastFinalMessageId: (session as any).lastFinalMessageId,
       pendingPlanExecution: session.pendingPlanExecution,
+      permissionMode: session.permissionMode,
     })
   }
 
@@ -263,7 +263,7 @@ export class CloudSessionStorage {
     }
 
     // Local-only updates
-    const localKeys = ['sdkCwd', 'workingDirectory', 'lastReadMessageId', 'hasUnread', 'lastFinalMessageId', 'sdkSessionId', 'pendingPlanExecution'] as const
+    const localKeys = ['sdkCwd', 'workingDirectory', 'lastReadMessageId', 'hasUnread', 'lastFinalMessageId', 'sdkSessionId', 'pendingPlanExecution', 'permissionMode'] as const
     const localUpdates: Record<string, any> = {}
     for (const key of localKeys) {
       if (key in updates) localUpdates[key] = (updates as any)[key]
@@ -302,7 +302,7 @@ export class CloudSessionStorage {
       lastMessageRole: row.last_message_role ?? undefined,
       isArchived: row.archived === 1 || row.archived === true,
       // Synced metadata
-      permissionMode: metadata.permissionMode as any,
+      permissionMode: localState.permissionMode as any,
       thinkingLevel: metadata.thinkingLevel as any,
       model: metadata.model,
       llmConnection: metadata.llmConnection,
@@ -312,8 +312,6 @@ export class CloudSessionStorage {
       labels: metadata.labels,
       sharedUrl: metadata.sharedUrl,
       sharedId: metadata.sharedId,
-      parentSessionId: metadata.parentSessionId,
-      siblingOrder: metadata.siblingOrder,
       hidden: metadata.hidden,
       // Local-only state
       sdkCwd: localState.sdkCwd,
@@ -346,7 +344,7 @@ export class CloudSessionStorage {
       isArchived: row.archived === 1 || row.archived === true,
       messages,
       // Synced metadata
-      permissionMode: metadata.permissionMode as any,
+      permissionMode: localState.permissionMode as any,
       thinkingLevel: metadata.thinkingLevel as any,
       model: metadata.model,
       llmConnection: metadata.llmConnection,
@@ -357,8 +355,6 @@ export class CloudSessionStorage {
       enabledSourceSlugs: metadata.enabledSourceSlugs,
       sharedUrl: metadata.sharedUrl,
       sharedId: metadata.sharedId,
-      parentSessionId: metadata.parentSessionId,
-      siblingOrder: metadata.siblingOrder,
       hidden: metadata.hidden,
       // Local-only state
       sdkCwd: localState.sdkCwd,

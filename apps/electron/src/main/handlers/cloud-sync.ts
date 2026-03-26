@@ -27,6 +27,35 @@ export const CLOUD_SYNC_HANDLED_CHANNELS = [
 ] as const
 
 export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps): void {
+  async function waitForWorkspaceMembership(
+    cloudWorkspaceId: string,
+    userId: string,
+    timeoutMs = 60_000,
+  ): Promise<void> {
+    const client = supabaseAuthService.getClient()
+    if (!client) {
+      throw new Error('Not authenticated')
+    }
+
+    const startedAt = Date.now()
+    while (Date.now() - startedAt < timeoutMs) {
+      const { data, error } = await client
+        .from('workspace_members')
+        .select('id')
+        .eq('cloud_workspace_id', cloudWorkspaceId)
+        .eq('user_id', userId)
+        .limit(1)
+
+      if (!error && data && data.length > 0) {
+        return
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+
+    throw new Error('Timed out waiting for workspace membership replication')
+  }
+
   const cloudExperimentalEnabled = process.env.CLOUD_SYNC_EXPERIMENTAL === '1'
   const supabaseAuthService = new SupabaseAuthService()
   const powerSyncService = new PowerSyncService()
@@ -48,7 +77,8 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
 
   /**
    * Connect PowerSync for the first cloud-linked workspace found.
-   * Called after sign-in or on startup when already authenticated.
+   * Falls back to active workspace so post-auth writes can still route via
+   * PowerSync even before a cloud workspace is linked locally.
    */
   async function connectPowerSyncForCloudWorkspace(): Promise<void> {
     console.log('[CloudSync] connectPowerSyncForCloudWorkspace: starting')
@@ -64,18 +94,27 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
       return
     }
 
-    const { getWorkspaces } = await import('@craft-agent/shared/config/storage')
+    const { getActiveWorkspace, getWorkspaces } = await import('@craft-agent/shared/config/storage')
     const workspaces = getWorkspaces()
     console.log('[CloudSync] connectPowerSyncForCloudWorkspace: found workspaces:', workspaces.map(w => ({ id: w.id, storageMode: w.storageMode })))
     const cloudWs = workspaces.find(w => w.storageMode === 'cloud')
-    if (!cloudWs) {
-      console.warn('[CloudSync] connectPowerSyncForCloudWorkspace: no cloud workspace found')
+    const targetWorkspace = cloudWs ?? getActiveWorkspace() ?? workspaces[0]
+    if (!targetWorkspace) {
+      console.warn('[CloudSync] connectPowerSyncForCloudWorkspace: no workspace available for PowerSync db path')
       return
     }
 
-    const storagePaths = await ensureCloudWorkspaceStoragePaths(cloudWs.rootPath)
+    const storagePaths = await ensureCloudWorkspaceStoragePaths(targetWorkspace.rootPath)
     const dbPath = join(storagePaths.dbDir, 'powersync.db')
-    console.log('[CloudSync] connectPowerSyncForCloudWorkspace: connecting PowerSync at', dbPath, 'to', powersyncUrl)
+    console.log(
+      '[CloudSync] connectPowerSyncForCloudWorkspace: connecting PowerSync at',
+      dbPath,
+      'to',
+      powersyncUrl,
+      '(workspace:',
+      targetWorkspace.id,
+      ')'
+    )
 
     try {
       await powerSyncService.connect({
@@ -183,25 +222,33 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
     }
     const userId = session.user.id
 
-    // Step 1: Insert workspace (no .select() — the SELECT RLS requires membership which doesn't exist yet)
-    const workspaceId = crypto.randomUUID()
-    const { error } = await client
-      .from('cloud_workspaces')
-      .insert({ id: workspaceId, name, created_by: userId })
-
-    if (error) {
-      console.error('[CloudSync] Workspace create failed:', error)
-      return { success: false, error: error.message }
+    const db = powerSyncService.getDatabase()
+    if (!db) {
+      return { success: false, error: 'PowerSync is not connected' }
     }
 
-    // Step 2: Add creator as owner (must happen before any SELECT on the workspace)
-    const { error: memberError } = await client
-      .from('workspace_members')
-      .insert({ cloud_workspace_id: workspaceId, user_id: userId, role: 'owner' })
+    // Step 1: Insert workspace via PowerSync (uploaded through connector queue)
+    const workspaceId = crypto.randomUUID()
+    const createdAt = new Date().toISOString()
+    try {
+      await db.execute(
+        `INSERT INTO cloud_workspaces (id, name, created_by, created_at)
+         VALUES (?, ?, ?, ?)`,
+        [workspaceId, name, userId, createdAt]
+      )
+      await db.execute(
+        `INSERT INTO workspace_members (id, cloud_workspace_id, user_id, role, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [crypto.randomUUID(), workspaceId, userId, 'owner', createdAt]
+      )
 
-    if (memberError) {
-      console.error('[CloudSync] Failed to add owner membership:', memberError)
-      return { success: false, error: 'Workspace created but membership failed: ' + memberError.message }
+      // Ensure membership has reached Supabase before allowing session writes.
+      // chat_sessions RLS requires workspace membership at insert time.
+      await waitForWorkspaceMembership(workspaceId, userId)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create workspace'
+      console.error('[CloudSync] Workspace create failed via PowerSync:', err)
+      return { success: false, error: message }
     }
 
     return {
@@ -209,7 +256,7 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
       workspace: {
         id: workspaceId,
         name,
-        createdAt: new Date().toISOString(),
+        createdAt,
       },
     }
   })

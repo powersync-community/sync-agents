@@ -1,10 +1,14 @@
-import { PowerSyncDatabase } from '@powersync/node'
+import { createRequire } from 'node:module'
+import type { PowerSyncDatabase } from '@powersync/node'
 import { AppSchema } from './powersync-schema'
 import { SupabasePowerSyncConnector } from './powersync-connector'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SyncStatus } from './types'
 
-const FIRST_SYNC_TIMEOUT_MS = 10_000
+const require = createRequire(__filename)
+const { PowerSyncDatabase: PowerSyncDatabaseCjs } = require('@powersync/node') as {
+  PowerSyncDatabase: typeof PowerSyncDatabase
+}
 
 export class PowerSyncService {
   private db: PowerSyncDatabase | null = null
@@ -41,7 +45,7 @@ export class PowerSyncService {
     )
 
     console.log('[PowerSync] connect: creating PowerSyncDatabase')
-    this.db = new PowerSyncDatabase({
+    this.db = new PowerSyncDatabaseCjs({
       schema: AppSchema,
       database: {
         dbFilename: options.dbPath,
@@ -69,33 +73,10 @@ export class PowerSyncService {
     this.connected = true
     console.log('[PowerSync] connect: db.connect() returned, waiting for first sync...')
 
-    // Wait for first sync with timeout — don't block app startup forever
-    try {
-      await Promise.race([
-        this.db.waitForFirstSync(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('First sync timed out')), FIRST_SYNC_TIMEOUT_MS)
-        ),
-      ])
-      this.synced = true
-      console.log('[PowerSync] First sync completed')
-    } catch (error) {
-      console.warn('[PowerSync] First sync did not complete within timeout, continuing:', error)
-      this.waitForSyncInBackground()
-    }
-  }
-
-  /**
-   * Keep listening for sync completion in background after timeout.
-   */
-  private waitForSyncInBackground(): void {
-    if (!this.db) return
-    this.db.waitForFirstSync().then(() => {
-      this.synced = true
-      console.log('[PowerSync] Background first sync completed')
-    }).catch((err) => {
-      console.error('[PowerSync] Background sync failed:', err)
-    })
+    // Wait indefinitely for initial sync to complete before continuing.
+    await this.db.waitForFirstSync()
+    this.synced = true
+    console.log('[PowerSync] First sync completed')
   }
 
   /**

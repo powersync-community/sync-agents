@@ -10,6 +10,7 @@ export interface SessionLocalState {
   // Filesystem (machine-specific — absolute paths differ per device)
   sdkCwd?: string
   workingDirectory?: string
+  permissionMode?: string
 
   // Read tracking (per-user — each user has their own read position)
   lastReadMessageId?: string

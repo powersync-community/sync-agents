@@ -1039,8 +1039,10 @@ export class SessionManager implements ISessionManager {
   private activeViewingSession: Map<string, string> = new Map()
   // Cloud session storage adapter (for cloud-linked workspaces)
   private cloudStorage: CloudSessionStorage | null = null
+  private cloudStorageWorkspaceId: string | null = null
   private powerSyncService: PowerSyncService | null = null
   private supabaseAuthService: SupabaseAuthService | null = null
+  private pendingCloudPersistWrites: Map<string, Promise<void>> = new Map()
 
   /** Resolved path to @github/copilot CLI entry point (for CopilotAgent) */
   copilotCliPath: string | undefined
@@ -1084,46 +1086,141 @@ export class SessionManager implements ISessionManager {
    * Initialize cloud session storage for a workspace.
    * Called after PowerSync connects and workspace is known to be cloud-linked.
    */
-  private initCloudStorage(workspace: Workspace): void {
-    if (!this.powerSyncService || !this.supabaseAuthService) return
+  private async initCloudStorage(workspace: Workspace): Promise<boolean> {
+    if (!this.powerSyncService || !this.supabaseAuthService) return false
     const db = this.powerSyncService.getDatabase()
     const supabase = this.supabaseAuthService.getClient()
-    if (!db || !supabase || !workspace.cloudWorkspaceId) return
+    if (!db || !supabase || !workspace.cloudWorkspaceId) return false
 
-    this.supabaseAuthService.getAuthState().then(authState => {
-      if (!authState.authenticated || !authState.user) return
+    try {
+      const authState = await this.supabaseAuthService.getAuthState()
+      if (!authState.authenticated || !authState.user) return false
+
       this.cloudStorage = new CloudSessionStorage(
         db,
         supabase,
-        workspace.cloudWorkspaceId!,
+        workspace.cloudWorkspaceId,
         workspace.rootPath,
         authState.user.id,
         () => this.powerSyncService?.hasSynced() ?? false,
       )
+      this.cloudStorageWorkspaceId = workspace.cloudWorkspaceId
       sessionLog.info(`Cloud session storage initialized for workspace ${workspace.id}`)
 
+      await this.hydrateCloudWorkspaceSessions(workspace)
       // Watch for real-time changes from other devices
       this.startCloudSessionWatcher(workspace)
-    }).catch(err => {
+      return true
+    } catch (err) {
       sessionLog.error('Failed to initialize cloud session storage:', err)
-    })
+      return false
+    }
+  }
+
+  private async ensureCloudStorageForWorkspace(workspace: Workspace): Promise<boolean> {
+    if (workspace.storageMode !== 'cloud' || !workspace.cloudWorkspaceId) return false
+    if (this.cloudStorage && this.cloudStorageWorkspaceId === workspace.cloudWorkspaceId) {
+      return true
+    }
+    return this.initCloudStorage(workspace)
   }
 
   /**
    * Check if a workspace uses cloud storage.
    */
   private isCloudWorkspace(workspace: Workspace): boolean {
-    return workspace.storageMode === 'cloud' && this.cloudStorage !== null
+    return (
+      workspace.storageMode === 'cloud' &&
+      this.cloudStorage !== null &&
+      !!workspace.cloudWorkspaceId &&
+      this.cloudStorageWorkspaceId === workspace.cloudWorkspaceId
+    )
   }
 
   /**
    * Route updateSessionMetadata through cloud or local storage.
    */
   private async routeUpdateMetadata(managed: { workspace: Workspace; id: string }, updates: Partial<import('@craft-agent/shared/sessions').SessionConfig>): Promise<void> {
+    if (managed.workspace.storageMode === 'cloud' && !this.isCloudWorkspace(managed.workspace)) {
+      await this.ensureCloudStorageForWorkspace(managed.workspace)
+    }
     if (this.isCloudWorkspace(managed.workspace)) {
       await this.cloudStorage!.updateMetadata(managed.id, updates)
     } else {
       await updateSessionMetadata(managed.workspace.rootPath, managed.id, updates)
+    }
+  }
+
+  private async hydrateCloudWorkspaceSessions(workspace: Workspace): Promise<void> {
+    if (!this.cloudStorage) return
+
+    const cloudMetadata = await this.cloudStorage.listSessions()
+    const wsConfig = loadWorkspaceConfig(workspace.rootPath)
+    const wsDefaultWorkingDir = wsConfig?.defaults?.workingDirectory
+    const cloudSessionIds = new Set(cloudMetadata.map(meta => meta.id))
+    let changed = false
+
+    for (const meta of cloudMetadata) {
+      const existing = this.sessions.get(meta.id)
+      if (existing) {
+        existing.name = meta.name
+        existing.preview = meta.preview
+        existing.messageCount = meta.messageCount ?? existing.messageCount
+        existing.lastMessageAt = meta.lastMessageAt ?? existing.lastMessageAt
+        existing.lastMessageRole = meta.lastMessageRole
+        existing.isArchived = meta.isArchived ?? false
+        existing.isFlagged = meta.isFlagged ?? false
+        existing.sessionStatus = meta.sessionStatus
+        existing.labels = meta.labels
+        existing.permissionMode = meta.permissionMode
+        existing.model = meta.model
+        existing.llmConnection = meta.llmConnection
+        existing.thinkingLevel = meta.thinkingLevel
+        existing.hidden = meta.hidden
+        existing.sharedUrl = meta.sharedUrl
+        existing.sharedId = meta.sharedId
+        existing.workingDirectory = meta.workingDirectory
+        existing.sdkCwd = meta.sdkCwd
+        changed = true
+        continue
+      }
+
+      const managed = createManagedSession(meta, workspace, {
+        enabledSourceSlugs: undefined,
+        workingDirectory: meta.workingDirectory ?? wsDefaultWorkingDir,
+      })
+
+      if (managed.llmConnection) {
+        const conn = resolveSessionConnection(managed.llmConnection, undefined)
+        if (!conn) {
+          sessionLog.warn(`Session ${meta.id} has orphaned llmConnection "${managed.llmConnection}", clearing`)
+          managed.llmConnection = undefined
+          managed.connectionLocked = false
+        }
+      }
+
+      setPermissionMode(meta.id, managed.permissionMode ?? 'ask', { changedBy: 'restore' })
+      if (managed.previousPermissionMode) {
+        hydratePreviousPermissionMode(meta.id, managed.previousPermissionMode)
+      }
+
+      this.sessions.set(meta.id, managed)
+      changed = true
+    }
+
+    for (const [sessionId, managed] of this.sessions.entries()) {
+      if (
+        managed.workspace.id === workspace.id &&
+        managed.workspace.storageMode === 'cloud' &&
+        !cloudSessionIds.has(sessionId)
+      ) {
+        this.sessions.delete(sessionId)
+        changed = true
+      }
+    }
+
+    if (changed) {
+      this.sendEvent({ type: 'sessions_reordered' }, workspace.id)
     }
   }
 
@@ -1142,17 +1239,22 @@ export class SessionManager implements ISessionManager {
       {
         onResult: (result) => {
           const rows = result.rows?._array ?? []
+          const visibleSessionIds = new Set<string>()
+          let changed = false
           for (const row of rows) {
+            if (!row?.id) continue
+            visibleSessionIds.add(row.id)
             const existing = this.sessions.get(row.id)
             if (existing) {
               // Update existing in-memory session with synced changes
               const metadata = JSON.parse(row.metadata || '{}')
+              const localState = loadLocalState(workspace.rootPath, row.id)
               existing.name = row.name ?? undefined
               existing.isArchived = row.archived === 1
               existing.isFlagged = metadata.isFlagged ?? false
               existing.sessionStatus = metadata.sessionStatus
               existing.labels = metadata.labels
-              existing.permissionMode = metadata.permissionMode
+              existing.permissionMode = (localState.permissionMode as PermissionMode | undefined) ?? existing.permissionMode
               existing.model = metadata.model
               existing.llmConnection = metadata.llmConnection
               existing.thinkingLevel = metadata.thinkingLevel
@@ -1160,6 +1262,7 @@ export class SessionManager implements ISessionManager {
               existing.messageCount = row.message_count ?? 0
               existing.lastMessageAt = row.last_message_at ? new Date(row.last_message_at).getTime() : existing.lastMessageAt
               existing.lastMessageRole = row.last_message_role ?? undefined
+              changed = true
             } else {
               // New session from another device — add to in-memory cache
               const metadata = JSON.parse(row.metadata || '{}')
@@ -1180,7 +1283,7 @@ export class SessionManager implements ISessionManager {
                 messageCount: row.message_count ?? 0,
                 isFlagged: metadata.isFlagged ?? false,
                 isArchived: row.archived === 1,
-                permissionMode: metadata.permissionMode,
+                permissionMode: (localState.permissionMode as PermissionMode | undefined) ?? metadata.permissionMode,
                 sessionStatus: metadata.sessionStatus,
                 labels: metadata.labels,
                 workingDirectory: localState.workingDirectory,
@@ -1194,17 +1297,32 @@ export class SessionManager implements ISessionManager {
                 hidden: metadata.hidden,
                 messageQueue: [],
                 backgroundShellCommands: new Map(),
+                backgroundTaskOutputs: new Map(),
                 messagesLoaded: false,
                 tokenRefreshManager: new TokenRefreshManager(getSourceCredentialManager(), {
                   log: (msg: string) => sessionLog.debug(msg),
                 }),
               }
               this.sessions.set(row.id, managed)
+              changed = true
             }
           }
 
-          // Notify renderer to refresh session list
-          this.sendEvent({ type: 'sessions_reordered' }, workspace.id)
+          for (const [sessionId, managed] of this.sessions.entries()) {
+            if (
+              managed.workspace.id === workspace.id &&
+              managed.workspace.storageMode === 'cloud' &&
+              !visibleSessionIds.has(sessionId)
+            ) {
+              this.sessions.delete(sessionId)
+              changed = true
+            }
+          }
+
+          if (changed) {
+            // Notify renderer to refresh session list
+            this.sendEvent({ type: 'sessions_reordered' }, workspace.id)
+          }
         },
         onError: (err) => {
           sessionLog.error('[PowerSync] Session watch error:', err)
@@ -1707,7 +1825,7 @@ export class SessionManager implements ISessionManager {
         const workspaces = getWorkspaces()
         const cloudWs = workspaces.find(w => w.storageMode === 'cloud')
         if (cloudWs) {
-          this.initCloudStorage(cloudWs)
+          await this.ensureCloudStorageForWorkspace(cloudWs)
         }
       }
 
@@ -1812,14 +1930,25 @@ export class SessionManager implements ISessionManager {
         tokenUsage: managed.tokenUsage ?? DEFAULT_TOKEN_USAGE,
       } as StoredSession
 
-      // Route to cloud storage or JSONL persistence
-      if (this.isCloudWorkspace(managed.workspace)) {
-        void this.cloudStorage!.saveSession(storedSession).catch(err => {
-          sessionLog.error(`Failed to persist cloud session ${managed.id}:`, err)
+      // Always keep local JSONL persistence as creator-local source of truth.
+      sessionPersistenceQueue.enqueue(storedSession)
+
+      if (managed.workspace.storageMode === 'cloud' && !this.isCloudWorkspace(managed.workspace)) {
+        void this.ensureCloudStorageForWorkspace(managed.workspace).catch(err => {
+          sessionLog.error(`Failed to initialize cloud storage for workspace ${managed.workspace.id}:`, err)
         })
-      } else {
-        // Queue for async persistence with debouncing
-        sessionPersistenceQueue.enqueue(storedSession)
+      }
+
+      // Route to cloud storage for cloud workspaces.
+      if (this.isCloudWorkspace(managed.workspace)) {
+        const pendingWrite = this.cloudStorage!.saveSession(storedSession).catch(err => {
+          sessionLog.error(`Failed to persist cloud session ${managed.id}:`, err)
+        }).finally(() => {
+          if (this.pendingCloudPersistWrites.get(managed.id) === pendingWrite) {
+            this.pendingCloudPersistWrites.delete(managed.id)
+          }
+        })
+        this.pendingCloudPersistWrites.set(managed.id, pendingWrite)
       }
     } catch (error) {
       sessionLog.error(`Failed to queue session ${managed.id} for persistence:`, error)
@@ -1829,11 +1958,18 @@ export class SessionManager implements ISessionManager {
   // Flush a specific session immediately (call on session close/switch)
   async flushSession(sessionId: string): Promise<void> {
     await sessionPersistenceQueue.flush(sessionId)
+    const pendingCloudWrite = this.pendingCloudPersistWrites.get(sessionId)
+    if (pendingCloudWrite) {
+      await pendingCloudWrite
+    }
   }
 
   // Flush all pending sessions (call on app quit)
   async flushAllSessions(): Promise<void> {
     await sessionPersistenceQueue.flushAll()
+    if (this.pendingCloudPersistWrites.size > 0) {
+      await Promise.all(Array.from(this.pendingCloudPersistWrites.values()))
+    }
   }
 
   // ============================================
@@ -2236,6 +2372,13 @@ export class SessionManager implements ISessionManager {
       throw new Error(`Workspace ${workspaceId} not found`)
     }
 
+    if (workspace.storageMode === 'cloud') {
+      const ready = await this.ensureCloudStorageForWorkspace(workspace)
+      if (!ready) {
+        throw new Error('Cloud session storage is not ready for this workspace')
+      }
+    }
+
     // Get new session defaults from workspace config (with global fallback)
     // Options.permissionMode overrides the workspace default (used by EditPopover for auto-execute)
     const workspaceRootPath = workspace.rootPath
@@ -2597,6 +2740,12 @@ export class SessionManager implements ISessionManager {
     }
 
     this.sessions.set(storedSession.id, managed)
+    if (this.isCloudWorkspace(workspace)) {
+      this.persistSession(managed)
+      // Ensure the local JSONL file exists immediately for new cloud sessions.
+      // Some startup/UI paths read session headers right after creation.
+      await this.flushSession(storedSession.id)
+    }
 
     // Initialize session metadata in AutomationSystem for diffing
     const automationSystem = this.automationSystems.get(workspaceRootPath)
