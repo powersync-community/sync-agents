@@ -146,48 +146,39 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
     const client = supabaseAuthService.getClient()
     if (!client) return { success: false, error: 'Not authenticated' }
 
-    // Refresh session to ensure JWT is fresh (RLS needs valid auth.uid())
-    const { data: refreshData, error: refreshError } = await client.auth.refreshSession()
-    if (refreshError || !refreshData.session?.user) {
-      // Fall back to existing session
-      console.warn('[CloudSync] Session refresh failed, trying existing session:', refreshError?.message)
-    }
-
     const { data: { session } } = await client.auth.getSession()
     if (!session?.user) {
       return { success: false, error: 'Not authenticated' }
     }
     const userId = session.user.id
 
-    console.log('[CloudSync] Creating workspace, userId:', userId, 'jwt sub:', session.access_token ? 'present' : 'missing')
-
-    const { data, error } = await client
+    // Step 1: Insert workspace (no .select() — the SELECT RLS requires membership which doesn't exist yet)
+    const workspaceId = crypto.randomUUID()
+    const { error } = await client
       .from('cloud_workspaces')
-      .insert({ name, created_by: userId })
-      .select('id, name, created_at')
-      .single()
+      .insert({ id: workspaceId, name, created_by: userId })
 
     if (error) {
       console.error('[CloudSync] Workspace create failed:', error)
       return { success: false, error: error.message }
     }
 
-    // Add creator as owner in workspace_members (required for RLS)
+    // Step 2: Add creator as owner (must happen before any SELECT on the workspace)
     const { error: memberError } = await client
       .from('workspace_members')
-      .insert({ cloud_workspace_id: data.id, user_id: userId, role: 'owner' })
+      .insert({ cloud_workspace_id: workspaceId, user_id: userId, role: 'owner' })
 
     if (memberError) {
       console.error('[CloudSync] Failed to add owner membership:', memberError)
-      // Non-fatal: workspace was created, membership can be retried
+      return { success: false, error: 'Workspace created but membership failed: ' + memberError.message }
     }
 
     return {
       success: true,
       workspace: {
-        id: data.id,
-        name: data.name,
-        createdAt: data.created_at,
+        id: workspaceId,
+        name,
+        createdAt: new Date().toISOString(),
       },
     }
   })
