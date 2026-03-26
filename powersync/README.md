@@ -1,60 +1,84 @@
-# Local PowerSync + Supabase Backend
+# Local PowerSync + Supabase backend
 
-This folder provides a local backend for:
-- Supabase (local)
-- PowerSync service
-- MongoDB sync bucket storage
+This folder configures the **local** stack used by Sync Agents for optional **cloud workspaces**:
+
+- **Supabase** (CLI-managed) — Auth, Postgres, and Storage
+- **PowerSync Service** (Docker) — replication and sync rules; sync bucket storage uses Postgres (see `powersync.yaml`)
+
+Sync rules live in `sync-config.yaml`. Service config is in `powersync.yaml`.
 
 ## Prerequisites
-- Supabase CLI installed (`supabase`)
+
+- [Supabase CLI](https://supabase.com/docs/guides/cli) (`supabase`)
 - Docker with Compose
 
-## Start local backend
-1. `cd powersync/local` (from the repo root)
-2. `cp .env.supabase-mongo.example .env.supabase-mongo`
-3. Start Supabase:
-   - `supabase start`
-4. Start PowerSync + Mongo:
-   - `docker compose -f compose.supabase-mongo.yaml --env-file .env.supabase-mongo up -d`
+## One-shot start (from repo root)
 
-## Stop local backend
-1. `docker compose -f compose.supabase-mongo.yaml --env-file .env.supabase-mongo down`
-2. `supabase stop`
+1. Copy env for the PowerSync container:
 
-## App env values
-Set these in the repo root `.env` file:
-- `CLOUD_SYNC_EXPERIMENTAL=1`
-- `SUPABASE_URL=http://127.0.0.1:54321`
-- `SUPABASE_PUBLISHABLE_KEY=<anon key from supabase status>`
+   ```bash
+   cp powersync/.env.supabase.example powersync/.env.supabase
+   ```
 
-PowerSync local URL:
-- `http://127.0.0.1:8080`
+   Adjust values if needed (defaults match local Supabase project `syncagents`).
 
-## Test user (seeded automatically)
+2. Copy app env at repo root:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   For cloud sync, set at least:
+
+   - `CLOUD_SYNC_EXPERIMENTAL=1`
+   - `SUPABASE_URL=http://127.0.0.1:54321`
+   - `SUPABASE_PUBLISHABLE_KEY=<anon key from supabase status>`
+   - `POWERSYNC_URL=http://127.0.0.1:8080`
+
+3. Start Supabase and PowerSync:
+
+   ```bash
+   bun run start:local
+   ```
+
+   (`start:local` runs `supabase start` then `docker compose` with `compose.supabase.yaml`.)
+
+4. Run the desktop app:
+
+   ```bash
+   bun run electron:start
+   ```
+
+## Stop / reset
+
+```bash
+bun run stop:local
+```
+
+## PowerSync URL (local)
+
+Default HTTP endpoint: `http://127.0.0.1:8080` (port from `PS_PORT` in `powersync/.env.supabase`).
+
+## Test user (seeded)
+
+Defined in `supabase/seed.sql`:
+
 - **Email:** `dev@syncagents.local`
 - **Password:** `devpass123`
-- **Workspace:** "Dev Workspace" (owner)
 
 ### Verify sign-in
+
 ```bash
-# Get the anon key
+# Anon key
 supabase status
 
-# Test sign-in
 curl -s -X POST 'http://127.0.0.1:54321/auth/v1/token?grant_type=password' \
   -H "apikey: <anon-key>" \
   -H "Content-Type: application/json" \
   -d '{"email":"dev@syncagents.local","password":"devpass123"}'
-
-# Test sign-up (no email confirmation required)
-curl -s -X POST 'http://127.0.0.1:54321/auth/v1/signup' \
-  -H "apikey: <anon-key>" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"newuser@test.com","password":"testpass123"}'
 ```
 
 ## Notes
-- Supabase project id is `syncagents`, so container DNS names follow that suffix.
-- SQL migration avoids `create policy if not exists` and uses guarded `DO $$` blocks.
-- Storage policies are created only after workspace tables exist.
-- JWT algorithm is ES256 (Supabase CLI default). PowerSync Service v1.19.0+ validates via JWKS.
+
+- Supabase project id is `syncagents` (see `supabase/config.toml`); Docker network `supabase_network_syncagents` is used by Compose.
+- PowerSync Service validates JWTs via Supabase JWKS (`PS_BACKEND_JWKS_URI` in `powersync/.env.supabase`).

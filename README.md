@@ -1,7 +1,10 @@
-# Craft Agents
+# Sync Agents
+
+A community fork of [Craft Agents](https://github.com/lukilabs/craft-agents-oss) that adds **optional cloud workspaces** backed by **Supabase** and synced with **[PowerSync](https://www.powersync.com/)**.
+
+When cloud sync is enabled, the Electron app keeps a local **PowerSync SQLite** database in the workspace (under `.craft-agent/powersync/`) and replicates chat sessions and related data with Postgres on Supabase, scoped by workspace membership. Local-only workspaces behave like upstream Craft Agents.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 ## How it Works (Video)
 To understand what Craft Agents does and how it works watch this video.
@@ -72,31 +75,58 @@ curl -fsSL https://agents.craft.do/install-app.sh | bash
 irm https://agents.craft.do/install-app.ps1 | iex
 ```
 
-### Build from Source
+### Build from source
 
 ```bash
 git clone https://github.com/powersync-community/sync-agents.git
-cd syn-agents
+cd sync-agents
 bun install
-```
-
-```bash
 cp .env.example .env
 ```
 
-```
-bun start:local
-```
+**Minimal (local-only, no cloud sync)** — fill in `ANTHROPIC_API_KEY`, `CRAFT_MCP_URL`, and `CRAFT_MCP_TOKEN` in `.env`, then:
 
-Copy you Supabase publishable key into the `.env` file
-
-
-```
+```bash
+bun run electron:dev
+# or
 bun run electron:start
 ```
 
+**With PowerSync + Supabase (cloud workspaces)** — set `CLOUD_SYNC_EXPERIMENTAL=1` and add `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `POWERSYNC_URL` (see [PowerSync & cloud sync](#powersync--cloud-sync)). Start the local backend, then launch the app:
+
+```bash
+cp powersync/.env.supabase.example powersync/.env.supabase
+bun run start:local
+```
+
+Copy the **anon** (publishable) key from `supabase status` into `.env` as `SUPABASE_PUBLISHABLE_KEY`.
+
+```bash
+bun run electron:start
+```
+
+Full backend steps and verification commands are in [`powersync/README.md`](powersync/README.md).
+
+## PowerSync & cloud sync
+
+Cloud sync is gated by `CLOUD_SYNC_EXPERIMENTAL=1` in `.env`. When enabled, the app uses **Supabase Auth** and connects to a **PowerSync Service** URL (`POWERSYNC_URL`, e.g. `http://127.0.0.1:8080` for local dev). The PowerSync client runs in the **Electron main process** (`@powersync/node`); session data for cloud-linked workspaces is read and written through PowerSync SQLite and uploaded via a Supabase-backed connector.
+
+**Repo layout:**
+
+| Path | Role |
+|------|------|
+| `supabase/` | Local Supabase project (migrations, seed user, config) |
+| `powersync/sync-config.yaml` | Sync rules (which rows replicate per user) |
+| `powersync/powersync.yaml` | PowerSync Service config (replication, JWKS, ports) |
+| `powersync/compose.supabase.yaml` | Docker Compose service wired to the Supabase network |
+
+**Scripts:** `bun run start:local` starts Supabase and the PowerSync container; `bun run stop:local` tears them down.
+
+See [`powersync/README.md`](powersync/README.md) for environment variables, the seeded test account, and curl examples.
+
 ## Features
 
+- **Cloud workspaces (PowerSync)**: Optional Supabase-backed workspaces with local-first SQLite sync and team-scoped data (when `CLOUD_SYNC_EXPERIMENTAL=1`)
 - **Multi-Session Inbox**: Desktop app with session management, status workflow, and flagging
 - **Claude Code Experience**: Streaming responses, tool visualization, real-time updates
 - **Multiple LLM Connections**: Add multiple AI providers and set per-workspace defaults
@@ -114,11 +144,12 @@ bun run electron:start
 
 ## Quick Start
 
-1. **Launch the app** after installation
+1. **Launch the app** after installation or [build from source](#build-from-source)
 2. **Choose API Connection**: Use Anthropic (API key or Claude Max), Google AI Studio, ChatGPT Plus (Codex OAuth), or GitHub Copilot OAuth
 3. **Create a workspace**: Set up a workspace to organize your sessions
-4. **Connect sources** (optional): Add MCP servers, REST APIs, or local filesystems
-5. **Start chatting**: Create sessions and interact with Claude
+4. **Cloud sync** (optional): With `CLOUD_SYNC_EXPERIMENTAL=1` and the local stack running, sign in and link a cloud workspace — sessions sync via PowerSync (see [PowerSync & cloud sync](#powersync--cloud-sync))
+5. **Connect sources** (optional): Add MCP servers, REST APIs, or local filesystems
+6. **Start chatting**: Create sessions and interact with Claude
 
 ## Desktop App Features
 
@@ -357,16 +388,19 @@ craft-cli --validate-server --url ws://127.0.0.1:9100 --token <token>
 ## Architecture
 
 ```
-craft-agent/
+sync-agents/
 ├── apps/
 │   ├── cli/                   # Terminal client (CLI)
 │   └── electron/              # Desktop GUI (primary)
 │       └── src/
-│           ├── main/          # Electron main process
+│           ├── main/          # Electron main process (incl. PowerSync + cloud IPC)
 │           ├── preload/       # Context bridge
 │           └── renderer/      # React UI (Vite + shadcn)
+├── powersync/                 # Local PowerSync Service compose + sync rules
+├── supabase/                  # Local Supabase (Auth, Postgres, migrations)
 └── packages/
     ├── core/                  # Shared types
+    ├── server-core/           # Session manager, cloud session storage (PowerSync types)
     └── shared/                # Business logic
         └── src/
             ├── agent/         # CraftAgent, permissions
@@ -513,6 +547,8 @@ Configuration is stored at `~/.craft-agent/`:
         ├── theme.json       # Workspace theme override
         ├── automations.json  # Event-driven automations
         ├── sessions/        # Session data (JSONL)
+        ├── .craft-agent/    # Present when using cloud-linked workspace paths
+        │   └── powersync/   # PowerSync SQLite + attachment cache (cloud sync)
         ├── sources/         # Connected sources
         ├── skills/          # Custom skills
         └── statuses/        # Status configuration
@@ -589,6 +625,7 @@ craftagents://action/new-chat                  # Create new session
 | AI (Pi) | Pi SDK agent server |
 | Desktop | [Electron](https://www.electronjs.org/) + React |
 | UI | [shadcn/ui](https://ui.shadcn.com/) + Tailwind CSS v4 |
+| Cloud sync | [PowerSync](https://github.com/powersync-ja/powersync-js) (`@powersync/node`), [Supabase](https://supabase.com/) |
 | Build | esbuild (main) + Vite (renderer) |
 | Credentials | AES-256-GCM encrypted file storage |
 
