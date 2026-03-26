@@ -146,23 +146,36 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
     const client = supabaseAuthService.getClient()
     if (!client) return { success: false, error: 'Not authenticated' }
 
-    const authState = await supabaseAuthService.getAuthState()
-    if (!authState.authenticated || !authState.user) {
+    // Refresh session to ensure JWT is fresh (RLS needs valid auth.uid())
+    const { data: refreshData, error: refreshError } = await client.auth.refreshSession()
+    if (refreshError || !refreshData.session?.user) {
+      // Fall back to existing session
+      console.warn('[CloudSync] Session refresh failed, trying existing session:', refreshError?.message)
+    }
+
+    const { data: { session } } = await client.auth.getSession()
+    if (!session?.user) {
       return { success: false, error: 'Not authenticated' }
     }
+    const userId = session.user.id
+
+    console.log('[CloudSync] Creating workspace, userId:', userId, 'jwt sub:', session.access_token ? 'present' : 'missing')
 
     const { data, error } = await client
       .from('cloud_workspaces')
-      .insert({ name, created_by: authState.user.id })
+      .insert({ name, created_by: userId })
       .select('id, name, created_at')
       .single()
 
-    if (error) return { success: false, error: error.message }
+    if (error) {
+      console.error('[CloudSync] Workspace create failed:', error)
+      return { success: false, error: error.message }
+    }
 
     // Add creator as owner in workspace_members (required for RLS)
     const { error: memberError } = await client
       .from('workspace_members')
-      .insert({ cloud_workspace_id: data.id, user_id: authState.user.id, role: 'owner' })
+      .insert({ cloud_workspace_id: data.id, user_id: userId, role: 'owner' })
 
     if (memberError) {
       console.error('[CloudSync] Failed to add owner membership:', memberError)

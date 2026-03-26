@@ -25,7 +25,7 @@ This folder provides a local backend for:
 Set these in the repo root `.env` file:
 - `CLOUD_SYNC_EXPERIMENTAL=1`
 - `SUPABASE_URL=http://127.0.0.1:54321`
-- `SUPABASE_ANON_KEY=<anon key from supabase status>`
+- `SUPABASE_PUBLISHABLE_KEY=<anon key from supabase status>`
 
 PowerSync local URL:
 - `http://127.0.0.1:8080`

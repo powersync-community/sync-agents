@@ -56,7 +56,7 @@ function getBuildDefines(): string[] {
     "CRAFT_DEV_RUNTIME",
     "CLOUD_SYNC_EXPERIMENTAL",
     "SUPABASE_URL",
-    "SUPABASE_ANON_KEY",
+    "SUPABASE_PUBLISHABLE_KEY",
     "POWERSYNC_URL",
     "CRAFT_CONFIG_DIR",
   ];
