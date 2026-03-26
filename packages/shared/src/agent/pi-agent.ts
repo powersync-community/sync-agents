@@ -41,7 +41,7 @@ import type { Workspace } from '../config/storage.ts';
 import { PiEventAdapter } from './backend/pi/event-adapter.ts';
 import { EventQueue } from './backend/event-queue.ts';
 
-// System prompt for Craft Agent context
+// System prompt for Sync Agent context
 import { getSystemPrompt } from '../prompts/system.ts';
 
 // Credential manager for token storage

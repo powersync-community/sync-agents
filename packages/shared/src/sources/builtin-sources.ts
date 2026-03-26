@@ -37,7 +37,7 @@ export function getDocsSource(workspaceId: string, workspaceRootPath: string): L
   // Return a placeholder - this shouldn't be called anymore
   const placeholderConfig: FolderSourceConfig = {
     id: 'builtin-craft-agents-docs',
-    name: 'Craft Agents Docs',
+    name: 'Sync Agents Docs',
     slug: 'craft-agents-docs',
     enabled: false,
     provider: 'mintlify',
