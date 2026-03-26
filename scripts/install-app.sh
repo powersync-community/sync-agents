@@ -142,7 +142,7 @@ esac
 # Set platform-specific variables
 if [ "$OS_TYPE" = "darwin" ]; then
     platform="darwin-${arch}"
-    APP_NAME="Craft Agents.app"
+    APP_NAME="Sync Agents.app"
     INSTALL_DIR="/Applications"
     ext="zip"
     yml_file="latest-mac.yml"

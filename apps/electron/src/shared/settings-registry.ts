@@ -32,11 +32,11 @@ export interface SettingsPageDefinition {
  * ADD NEW PAGES HERE - everything else derives from this list.
  */
 export const SETTINGS_PAGES = [
-  { id: 'app', label: 'App', description: 'Notifications and updates' },
+  { id: 'app', label: 'App', description: 'Notifications, Team Sync, updates' },
   { id: 'ai', label: 'AI', description: 'Model, thinking, connections' },
   { id: 'appearance', label: 'Appearance', description: 'Theme, font, tool icons' },
   { id: 'input', label: 'Input', description: 'Send key, spell check' },
-  { id: 'workspace', label: 'Workspace', description: 'Name, icon, working directory' },
+  { id: 'workspace', label: 'Workspace', description: 'Name, icon, sources, working directory' },
   { id: 'permissions', label: 'Permissions', description: 'Explore mode rules' },
   { id: 'labels', label: 'Labels', description: 'Manage session labels' },
   { id: 'shortcuts', label: 'Shortcuts', description: 'Keyboard shortcuts' },

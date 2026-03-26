@@ -27,7 +27,7 @@ export function getBuiltinSources(_workspaceId: string, _workspaceRootPath: stri
 }
 
 /**
- * Get the built-in Craft Agents docs source.
+ * Get the built-in Sync Agents docs source.
  *
  * @deprecated craft-agents-docs is now an always-available MCP server
  * configured directly in craft-agent.ts. This function is kept for
@@ -47,7 +47,7 @@ export function getDocsSource(workspaceId: string, workspaceRootPath: string): L
       url: 'https://agents.craft.do/docs/mcp',
       authType: 'none',
     },
-    tagline: 'Search Craft Agents documentation and source setup guides',
+    tagline: 'Search Sync Agents documentation and source setup guides',
     icon: '📚',
     isAuthenticated: true,
     connectionStatus: 'connected',

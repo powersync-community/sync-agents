@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils"
 import { Key, Monitor } from "lucide-react"
-import { CraftAgentsSymbol } from "@/components/icons/CraftAgentsSymbol"
 import { StepFormLayout } from "./primitives"
+import powersyncLogoIcon from "@/assets/powersync-logo-icon.png"
 
 import claudeIcon from "@/assets/provider-icons/claude.svg"
 import openaiIcon from "@/assets/provider-icons/openai.svg"
@@ -71,10 +71,10 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
     <StepFormLayout
       iconElement={
         <div className="flex size-16 items-center justify-center">
-          <CraftAgentsSymbol className="size-10 text-accent" />
+          <img src={powersyncLogoIcon} alt="PowerSync" className="size-10 object-contain" />
         </div>
       }
-      title="Welcome to Craft Agents"
+      title="Welcome to Sync Agents"
       description="How would you like to connect?"
     >
       <div className="space-y-3">

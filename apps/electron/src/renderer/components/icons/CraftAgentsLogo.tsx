@@ -3,7 +3,7 @@ interface CraftAgentsLogoProps {
 }
 
 /**
- * Craft Agents pixel art logo - uses accent color from theme
+ * Pixel art logo - uses accent color from theme (historical branding)
  * Apply text-accent class to get the brand purple color
  */
 export function CraftAgentsLogo({ className }: CraftAgentsLogoProps) {

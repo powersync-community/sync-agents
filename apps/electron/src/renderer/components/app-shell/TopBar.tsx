@@ -9,7 +9,6 @@
 
 import * as Icons from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@craft-agent/ui"
-import { CraftAgentsSymbol } from "../icons/CraftAgentsSymbol"
 import { PanelLeftRounded } from "../icons/PanelLeftRounded"
 import { TopBarButton } from "../ui/TopBarButton"
 import { isMac } from "@/lib/platform"
@@ -40,6 +39,8 @@ import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import type { Workspace } from "../../../shared/types"
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { getDocUrl } from "@craft-agent/shared/docs/doc-links"
+import { CloudSyncIndicator } from "./CloudSyncIndicator"
+import powersyncLogoIcon from "@/assets/powersync-logo-icon.png"
 
 // --- Menu rendering (moved from AppMenu) ---
 
@@ -231,6 +232,8 @@ export function TopBar({
     toggleFocusMode: onToggleFocusMode,
     toggleSidebar: onToggleSidebar,
   }
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId)
+  const showCloudSyncIndicator = activeWorkspace?.storageMode === 'cloud'
 
   const menuLeftPadding = isMac ? 86 : 12
 
@@ -252,11 +255,11 @@ export function TopBar({
           <TooltipContent side="bottom">Toggle Sidebar</TooltipContent>
         </Tooltip>
 
-        {/* Craft Menu */}
+        {/* Sync Agents menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <TopBarButton aria-label="Craft menu">
-              <CraftAgentsSymbol className="h-4 text-accent" />
+            <TopBarButton aria-label="Sync Agents menu">
+              <img src={powersyncLogoIcon} alt="PowerSync" className="h-4 w-[22px] object-contain" />
             </TopBarButton>
           </DropdownMenuTrigger>
           <StyledDropdownMenuContent align="start" minWidth="min-w-48">
@@ -358,7 +361,7 @@ export function TopBar({
 
             <StyledDropdownMenuItem onClick={() => window.electronAPI.menuQuit()}>
               <Icons.LogOut className="h-3.5 w-3.5" />
-              Quit Craft Agents
+              Quit Sync Agents
               {quitHotkey && <DropdownMenuShortcut className="pl-6">{quitHotkey}</DropdownMenuShortcut>}
             </StyledDropdownMenuItem>
           </StyledDropdownMenuContent>
@@ -403,6 +406,7 @@ export function TopBar({
         <div className="min-w-0">
           <BrowserTabStrip activeSessionId={activeSessionId} maxVisibleBadges={maxVisibleBrowserBadges} />
         </div>
+        <CloudSyncIndicator show={showCloudSyncIndicator} />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TopBarButton aria-label="Add panel menu" className="ml-1 h-[26px] w-[26px] rounded-lg">

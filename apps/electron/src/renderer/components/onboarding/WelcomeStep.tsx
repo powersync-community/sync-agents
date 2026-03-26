@@ -1,5 +1,5 @@
-import { CraftAgentsSymbol } from "@/components/icons/CraftAgentsSymbol"
 import { StepFormLayout, ContinueButton } from "./primitives"
+import powersyncLogoIcon from "@/assets/powersync-logo-icon.png"
 
 interface WelcomeStepProps {
   onContinue: () => void
@@ -13,7 +13,7 @@ interface WelcomeStepProps {
  * WelcomeStep - Initial welcome screen for onboarding
  *
  * Shows different messaging for new vs existing users:
- * - New users: Welcome to Craft Agents
+ * - New users: Welcome to Sync Agents
  * - Existing users: Update your API connection settings
  */
 export function WelcomeStep({
@@ -25,10 +25,10 @@ export function WelcomeStep({
     <StepFormLayout
       iconElement={
         <div className="flex size-16 items-center justify-center">
-          <CraftAgentsSymbol className="size-10 text-accent" />
+          <img src={powersyncLogoIcon} alt="PowerSync" className="size-10 object-contain" />
         </div>
       }
-      title={isExistingUser ? 'Update Settings' : 'Welcome to Craft Agents'}
+      title={isExistingUser ? 'Update Settings' : 'Welcome to Sync Agents'}
       description={
         isExistingUser
           ? 'Update your API connection or change your setup.'

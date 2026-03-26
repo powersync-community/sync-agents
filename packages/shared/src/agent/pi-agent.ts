@@ -116,7 +116,7 @@ export const PI_BACKEND_SESSION_TOOL_NAMES = new Set<string>([
  * planning heuristics, config watching, usage tracking).
  */
 export class PiAgent extends BaseAgent {
-  protected backendName = 'Craft Agents Backend';
+  protected backendName = 'Sync Agents Backend';
 
   // ============================================================
   // Subprocess State
@@ -1732,7 +1732,7 @@ export class PiAgent extends BaseAgent {
         this.config.workspace.rootPath,
         this.config.session?.workingDirectory,
         this.config.systemPromptPreset,
-        'Craft Agents Backend' // backendName
+        'Sync Agents Backend' // backendName
       );
 
       // Build context from sources

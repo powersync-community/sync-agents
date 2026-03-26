@@ -10,6 +10,8 @@ export interface SyncStatus {
   configured: boolean
   connected: boolean
   syncing: boolean
+  downloading: boolean
+  uploading: boolean
   hasSynced: boolean
   lastSyncedAt?: number
 }

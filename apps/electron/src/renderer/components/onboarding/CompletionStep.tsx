@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@craft-agent/ui"
-import { CraftAgentsSymbol } from "@/components/icons/CraftAgentsSymbol"
 import { StepFormLayout } from "./primitives"
+import powersyncLogoIcon from "@/assets/powersync-logo-icon.png"
 
 interface CompletionStepProps {
   status: 'saving' | 'complete'
@@ -31,7 +31,7 @@ export function CompletionStep({
         </div>
       ) : (
         <div className="flex size-16 items-center justify-center">
-          <CraftAgentsSymbol className="size-10 text-accent" />
+          <img src={powersyncLogoIcon} alt="PowerSync" className="size-10 object-contain" />
         </div>
       )}
       title={isSaving ? 'Setting up...' : "You're all set!"}

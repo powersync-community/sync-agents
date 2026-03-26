@@ -146,7 +146,7 @@ interface AppMenuProps {
 /**
  * AppMenu - Main application dropdown menu and top bar navigation
  *
- * Contains the Craft logo dropdown with all menu functionality:
+ * Contains the app logo dropdown with all menu functionality:
  * - File actions (New Chat, New Window)
  * - Edit submenu (Undo, Redo, Cut, Copy, Paste, Select All)
  * - View submenu (Zoom In/Out, Reset)
@@ -196,11 +196,11 @@ export function AppMenu({
 
   return (
     <div className="flex items-center gap-[5px] w-full">
-      {/* Craft Logo Menu - interactive island */}
+      {/* App logo menu - interactive island */}
       <div className="pointer-events-auto titlebar-no-drag">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <TopBarButton aria-label="Craft menu">
+          <TopBarButton aria-label="Sync Agents menu">
             <CraftAgentsSymbol className="h-4 text-accent" />
           </TopBarButton>
         </DropdownMenuTrigger>
@@ -317,7 +317,7 @@ export function AppMenu({
           {/* Quit */}
           <StyledDropdownMenuItem onClick={() => window.electronAPI.menuQuit()}>
             <Icons.LogOut className="h-3.5 w-3.5" />
-            Quit Craft Agents
+            Quit Sync Agents
             {quitHotkey && <DropdownMenuShortcut className="pl-6">{quitHotkey}</DropdownMenuShortcut>}
           </StyledDropdownMenuItem>
         </StyledDropdownMenuContent>

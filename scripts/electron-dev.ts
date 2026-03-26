@@ -77,7 +77,7 @@ function detectInstance(): void {
     const instanceNum = match[1];
     process.env.CRAFT_INSTANCE_NUMBER = instanceNum;
     process.env.CRAFT_VITE_PORT = `${instanceNum}173`;
-    process.env.CRAFT_APP_NAME = `Craft Agents [${instanceNum}]`;
+    process.env.CRAFT_APP_NAME = `Sync Agents [${instanceNum}]`;
     process.env.CRAFT_CONFIG_DIR = join(process.env.HOME || "", `.craft-agent-${instanceNum}`);
     process.env.CRAFT_DEEPLINK_SCHEME = `craftagents${instanceNum}`;
     console.log(`🔢 Instance ${instanceNum} detected: port=${process.env.CRAFT_VITE_PORT}, config=${process.env.CRAFT_CONFIG_DIR}`);
@@ -259,7 +259,7 @@ function getElectronEnv(): Record<string, string> {
     // Use a separate config dir in dev so prod data (~/.craft-agent) stays clean.
     // Can be overridden via CRAFT_CONFIG_DIR in .env (or instance detection sets it to ~/.craft-agent-N).
     CRAFT_CONFIG_DIR: process.env.CRAFT_CONFIG_DIR || join(homedir(), ".craft-agent-dev"),
-    CRAFT_APP_NAME: process.env.CRAFT_APP_NAME || "Craft Agents",
+    CRAFT_APP_NAME: process.env.CRAFT_APP_NAME || "Sync Agents",
     CRAFT_DEEPLINK_SCHEME: process.env.CRAFT_DEEPLINK_SCHEME || "craftagents",
     CRAFT_INSTANCE_NUMBER: process.env.CRAFT_INSTANCE_NUMBER || "",
   };

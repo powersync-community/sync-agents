@@ -5,6 +5,7 @@
  *
  * Settings:
  * - Notifications
+ * - Team Sync
  * - Network (proxy)
  * - About (version, updates)
  *
@@ -20,7 +21,7 @@ import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { routes } from '@/lib/navigate'
 import { Spinner } from '@craft-agent/ui'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
-import type { NetworkProxySettings } from '../../../shared/types'
+import type { NetworkProxySettings, SupabaseAuthState } from '../../../shared/types'
 
 import {
   SettingsSection,
@@ -104,6 +105,14 @@ export default function AppSettingsPage() {
   const [proxyError, setProxyError] = useState<string | undefined>()
   const [isSavingProxy, setIsSavingProxy] = useState(false)
 
+  // Team Sync state
+  const [cloudAuthState, setCloudAuthState] = useState<SupabaseAuthState | null>(null)
+  const [teamSyncLoading, setTeamSyncLoading] = useState(false)
+  const [teamSyncError, setTeamSyncError] = useState<string>()
+  const [teamSyncMode, setTeamSyncMode] = useState<'signin' | 'signup'>('signin')
+  const [teamSyncEmail, setTeamSyncEmail] = useState('')
+  const [teamSyncPassword, setTeamSyncPassword] = useState('')
+
   // Auto-update state
   const updateChecker = useUpdateChecker()
   const [isCheckingForUpdates, setIsCheckingForUpdates] = useState(false)
@@ -131,6 +140,13 @@ export default function AppSettingsPage() {
       const form = toProxyFormState(proxySettings)
       setProxyForm(form)
       setSavedProxyForm(form)
+
+      try {
+        const authState = await window.electronAPI.supabaseGetUser()
+        setCloudAuthState(authState)
+      } catch {
+        // Cloud sync not available — ignore
+      }
     } catch (error) {
       console.error('Failed to load settings:', error)
     }
@@ -184,6 +200,46 @@ export default function AppSettingsPage() {
     setProxyForm(savedProxyForm)
     setProxyError(undefined)
   }, [savedProxyForm])
+
+  const handleTeamSyncAuth = useCallback(async () => {
+    if (!teamSyncEmail.trim() || !teamSyncPassword.trim()) {
+      setTeamSyncError('Please enter both email and password.')
+      return
+    }
+
+    setTeamSyncLoading(true)
+    setTeamSyncError(undefined)
+
+    try {
+      const result = teamSyncMode === 'signup'
+        ? await window.electronAPI.supabaseSignUp(teamSyncEmail, teamSyncPassword)
+        : await window.electronAPI.supabaseSignIn(teamSyncEmail, teamSyncPassword)
+
+      if (!result.success) {
+        setTeamSyncError(result.error || 'Authentication failed')
+        return
+      }
+
+      const authState = await window.electronAPI.supabaseGetUser()
+      setCloudAuthState(authState)
+      setTeamSyncEmail('')
+      setTeamSyncPassword('')
+    } catch (err) {
+      setTeamSyncError(err instanceof Error ? err.message : 'Failed')
+    } finally {
+      setTeamSyncLoading(false)
+    }
+  }, [teamSyncEmail, teamSyncPassword, teamSyncMode])
+
+  const handleTeamSyncSignOut = useCallback(async () => {
+    setTeamSyncLoading(true)
+    try {
+      await window.electronAPI.supabaseSignOut()
+      setCloudAuthState(null)
+    } finally {
+      setTeamSyncLoading(false)
+    }
+  }, [])
 
   return (
     <div className="h-full flex flex-col">
@@ -278,6 +334,74 @@ export default function AppSettingsPage() {
                         )}
                       </Button>
                     </SettingsCardFooter>
+                  )}
+                </SettingsCard>
+              </SettingsSection>
+
+              {/* Team Sync */}
+              <SettingsSection title="Team Sync" description="Sign in to enable team workspaces.">
+                <SettingsCard>
+                  {cloudAuthState?.authenticated ? (
+                    <SettingsRow
+                      label="Account"
+                      description={cloudAuthState.user?.email || 'Signed in'}
+                      action={
+                        <button
+                          type="button"
+                          onClick={handleTeamSyncSignOut}
+                          disabled={teamSyncLoading}
+                          className="inline-flex items-center h-8 px-3 text-sm rounded-lg bg-background shadow-minimal hover:bg-foreground/[0.02] transition-colors text-foreground/60 hover:text-foreground"
+                        >
+                          Sign Out
+                        </button>
+                      }
+                    />
+                  ) : (
+                    <div className="px-4 py-4 space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        Sign in or create an account to enable team workspaces.
+                      </p>
+                      <input
+                        type="email"
+                        placeholder="Email"
+                        value={teamSyncEmail}
+                        onChange={e => setTeamSyncEmail(e.target.value)}
+                        disabled={teamSyncLoading}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50"
+                      />
+                      <input
+                        type="password"
+                        placeholder="Password"
+                        value={teamSyncPassword}
+                        onChange={e => setTeamSyncPassword(e.target.value)}
+                        disabled={teamSyncLoading}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/50"
+                        onKeyDown={e => e.key === 'Enter' && handleTeamSyncAuth()}
+                      />
+                      {teamSyncError && (
+                        <p className="text-sm text-destructive">{teamSyncError}</p>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTeamSyncMode(m => m === 'signin' ? 'signup' : 'signin')
+                            setTeamSyncError(undefined)
+                          }}
+                          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {teamSyncMode === 'signin' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleTeamSyncAuth}
+                          disabled={teamSyncLoading || !teamSyncEmail.trim() || !teamSyncPassword.trim()}
+                          className="inline-flex items-center h-8 px-3 text-sm rounded-lg bg-background shadow-minimal hover:bg-foreground/[0.02] transition-colors disabled:opacity-50"
+                        >
+                          {teamSyncLoading ? 'Loading...' : teamSyncMode === 'signup' ? 'Sign Up' : 'Sign In'}
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </SettingsCard>
               </SettingsSection>

@@ -224,10 +224,10 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
         const piLabel = !isSubscription && connection.piAuthProvider
           ? PI_AUTH_PROVIDER_LABELS[connection.piAuthProvider]
           : null
-        parts.push(piLabel ?? 'Craft Agents Backend')
+        parts.push(piLabel ?? 'Sync Agents Backend')
         break
       }
-      case 'pi_compat': parts.push('Craft Agents Backend Compatible'); break
+      case 'pi_compat': parts.push('Sync Agents Backend Compatible'); break
       default: parts.push(provider || 'Unknown')
     }
 
@@ -500,7 +500,7 @@ function WorkspaceOverrideCard({ workspace, llmConnections, onSettingsChange }: 
                     value: conn.slug,
                     label: conn.name,
                     description: conn.providerType === 'anthropic' ? 'Anthropic' :
-                                 conn.providerType === 'pi' ? 'Craft Agents Backend' :
+                                 conn.providerType === 'pi' ? 'Sync Agents Backend' :
                                  conn.providerType || 'Unknown',
                   })),
                 ]}
@@ -914,8 +914,8 @@ export default function AiSettingsPage() {
                       description: conn.providerType === 'anthropic' ? 'Anthropic API' :
                                    conn.providerType === 'bedrock' ? 'AWS Bedrock' :
                                    conn.providerType === 'vertex' ? 'Google Vertex' :
-                                   conn.providerType === 'pi' ? 'Craft Agents Backend' :
-                                   conn.providerType === 'pi_compat' ? 'Craft Agents Backend Compatible' :
+                                   conn.providerType === 'pi' ? 'Sync Agents Backend' :
+                                   conn.providerType === 'pi_compat' ? 'Sync Agents Backend Compatible' :
                                    conn.providerType || 'Unknown',
                     }))}
                   />

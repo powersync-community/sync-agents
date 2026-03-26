@@ -94,7 +94,7 @@ describe('startup migration (integration)', () => {
     writeRootConfig(configPath, workspaceRoot, [
       {
         slug: 'pi-api-key',
-        name: 'Craft Agents Backend (OpenAI)',
+        name: 'Sync Agents Backend (OpenAI)',
         providerType: 'pi',
         authType: 'api_key',
         piAuthProvider: 'openai-codex',
@@ -119,7 +119,7 @@ describe('startup migration (integration)', () => {
     writeRootConfig(configPath, workspaceRoot, [
       {
         slug: 'pi-api-key',
-        name: 'Craft Agents Backend (Anthropic)',
+        name: 'Sync Agents Backend (Anthropic)',
         providerType: 'pi',
         authType: 'api_key',
         piAuthProvider: 'anthropic',
@@ -145,7 +145,7 @@ describe('startup migration (integration)', () => {
     writeRootConfig(configPath, workspaceRoot, [
       {
         slug: 'pi-api-key',
-        name: 'Craft Agents Backend (Anthropic)',
+        name: 'Sync Agents Backend (Anthropic)',
         providerType: 'pi',
         authType: 'api_key',
         piAuthProvider: 'anthropic',
@@ -173,7 +173,7 @@ describe('startup migration (integration)', () => {
     writeRootConfig(configPath, workspaceRoot, [
       {
         slug: 'pi-api-key',
-        name: 'Craft Agents Backend (Anthropic)',
+        name: 'Sync Agents Backend (Anthropic)',
         providerType: 'pi',
         authType: 'api_key',
         piAuthProvider: 'anthropic',
@@ -199,7 +199,7 @@ describe('startup migration (integration)', () => {
     writeRootConfig(configPath, workspaceRoot, [
       {
         slug: 'pi-api-key',
-        name: 'Craft Agents Backend (Anthropic)',
+        name: 'Sync Agents Backend (Anthropic)',
         providerType: 'pi',
         authType: 'api_key',
         piAuthProvider: 'anthropic',
@@ -228,7 +228,7 @@ describe('startup migration (integration)', () => {
     writeRootConfig(configPath, workspaceRoot, [
       {
         slug: 'pi-api-key',
-        name: 'Craft Agents Backend (OpenRouter)',
+        name: 'Sync Agents Backend (OpenRouter)',
         providerType: 'pi',
         authType: 'api_key',
         piAuthProvider: 'openrouter',

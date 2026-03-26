@@ -142,15 +142,21 @@ export class PowerSyncService {
         configured: false,
         connected: false,
         syncing: false,
+        downloading: false,
+        uploading: false,
         hasSynced: false,
       }
     }
 
     const syncStatus = this.db.currentStatus
+    const downloading = syncStatus?.dataFlowStatus?.downloading ?? false
+    const uploading = syncStatus?.dataFlowStatus?.uploading ?? false
     return {
       configured: true,
       connected: syncStatus?.connected ?? false,
-      syncing: syncStatus?.dataFlowStatus?.downloading ?? false,
+      syncing: downloading || uploading,
+      downloading,
+      uploading,
       hasSynced: this.synced,
       lastSyncedAt: syncStatus?.lastSyncedAt?.getTime(),
     }
