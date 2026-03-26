@@ -96,7 +96,7 @@ export interface CloudWorkspace {
   role?: string
 }
 
-export type StorageMode = 'local_only' | 'cloud_canonical'
+export type StorageMode = 'local' | 'cloud'
 
 export interface WorkspaceLinkState {
   localWorkspaceId: string

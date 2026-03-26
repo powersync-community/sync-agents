@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { StepFormLayout, BackButton, ContinueButton } from './primitives'
 
 type AuthMode = 'signin' | 'signup'
-type AuthStatus = 'idle' | 'loading' | 'provisioning' | 'error' | 'success'
+type AuthStatus = 'idle' | 'loading' | 'error' | 'success'
 
 interface TeamSyncStepProps {
   onComplete: () => void
@@ -30,7 +30,6 @@ export function TeamSyncStep({ onComplete, onBack, onSkip }: TeamSyncStepProps) 
     setErrorMessage(undefined)
 
     try {
-      // 1. Authenticate
       const result = mode === 'signup'
         ? await window.electronAPI.supabaseSignUp(email, password)
         : await window.electronAPI.supabaseSignIn(email, password)
@@ -41,36 +40,8 @@ export function TeamSyncStep({ onComplete, onBack, onSkip }: TeamSyncStepProps) 
         return
       }
 
-      // 2. Provision workspace
-      setStatus('provisioning')
-
-      const existingWorkspaces = await window.electronAPI.cloudWorkspaceList()
-
-      let cloudWorkspaceId: string
-
-      if (existingWorkspaces.length > 0) {
-        cloudWorkspaceId = existingWorkspaces[0].id
-      } else {
-        const createResult = await window.electronAPI.cloudWorkspaceCreate('My Workspace')
-        if (!createResult.success || !createResult.workspace) {
-          setStatus('error')
-          setErrorMessage(createResult.error || 'Failed to create cloud workspace')
-          return
-        }
-        cloudWorkspaceId = createResult.workspace.id
-      }
-
-      // 3. Link to current local workspace
-      const wsId = await window.electronAPI.getWindowWorkspace()
-      if (wsId) {
-        const linkResult = await window.electronAPI.cloudWorkspaceLinkLocal(wsId, cloudWorkspaceId)
-        if (!linkResult.success) {
-          console.warn('Failed to link workspace:', linkResult.error)
-          // Non-fatal: auth succeeded, workspace linking can be retried from settings
-        }
-      }
-
-      // 4. Done
+      // Auth-only: no workspace provisioning or linking.
+      // User creates/joins cloud workspaces later from the workspace creation flow.
       setStatus('success')
       setTimeout(() => onComplete(), 800)
     } catch (err) {
@@ -85,14 +56,10 @@ export function TeamSyncStep({ onComplete, onBack, onSkip }: TeamSyncStepProps) 
     setErrorMessage(undefined)
   }, [])
 
-  const isLoading = status === 'loading' || status === 'provisioning'
+  const isLoading = status === 'loading'
   const isSuccess = status === 'success'
 
-  const loadingText = status === 'provisioning'
-    ? 'Setting up workspace...'
-    : mode === 'signup'
-      ? 'Creating account...'
-      : 'Signing in...'
+  const loadingText = mode === 'signup' ? 'Creating account...' : 'Signing in...'
 
   return (
     <StepFormLayout
@@ -100,8 +67,8 @@ export function TeamSyncStep({ onComplete, onBack, onSkip }: TeamSyncStepProps) 
       title={isSuccess ? 'Connected!' : 'Team Sync'}
       description={
         isSuccess
-          ? 'Your account is ready. Syncing will start automatically.'
-          : 'Sign in or create an account to sync your data across devices.'
+          ? 'Your account is ready. Create a team workspace to start collaborating.'
+          : 'Sign in or create an account to enable team workspaces.'
       }
       actions={
         !isSuccess ? (

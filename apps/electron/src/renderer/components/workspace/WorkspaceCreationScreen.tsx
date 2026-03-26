@@ -8,10 +8,11 @@ import { overlayTransitionIn } from "@/lib/animations"
 import { AddWorkspaceStep_Choice } from "./AddWorkspaceStep_Choice"
 import { AddWorkspaceStep_CreateNew } from "./AddWorkspaceStep_CreateNew"
 import { AddWorkspaceStep_OpenFolder } from "./AddWorkspaceStep_OpenFolder"
-import type { Workspace } from "../../../shared/types"
+import { AddWorkspaceStep_CreateTeam } from "./AddWorkspaceStep_CreateTeam"
+import type { Workspace, StorageMode } from "../../../shared/types"
 import { toast } from "sonner"
 
-type CreationStep = 'choice' | 'create' | 'open'
+type CreationStep = 'choice' | 'create' | 'open' | 'team'
 
 interface WorkspaceCreationScreenProps {
   /** Callback when a workspace is created successfully */
@@ -25,9 +26,10 @@ interface WorkspaceCreationScreenProps {
  * WorkspaceCreationScreen - Full-screen overlay for creating workspaces
  *
  * Obsidian-style flow:
- * 1. Choice: Create new workspace OR Open existing folder
+ * 1. Choice: Create new workspace OR Open existing folder OR Create team workspace
  * 2a. Create: Enter name + choose location (default or custom)
  * 2b. Open: Browse folder OR create new folder at location
+ * 2c. Team: Enter name → creates in cloud + local folder
  */
 export function WorkspaceCreationScreen({
   onWorkspaceCreated,
@@ -38,6 +40,7 @@ export function WorkspaceCreationScreen({
   const [isCreating, setIsCreating] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [dimensions, setDimensions] = useState({ width: 1920, height: 1080 })
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   // Track window dimensions for shader
   useEffect(() => {
@@ -49,20 +52,27 @@ export function WorkspaceCreationScreen({
     return () => window.removeEventListener('resize', updateDimensions)
   }, [])
 
+  // Check cloud auth state on mount
+  useEffect(() => {
+    window.electronAPI.supabaseGetUser()
+      .then(state => setIsAuthenticated(state.authenticated))
+      .catch(() => {})
+  }, [])
+
   // Wrap onClose to prevent closing during creation
-  // FullscreenOverlayBase handles ESC key, this wrapper prevents closing when busy
   const handleClose = useCallback(() => {
     if (!isCreating) {
       onClose()
     }
   }, [isCreating, onClose])
 
-  const handleCreateWorkspace = useCallback(async (folderPath: string, name: string) => {
+  const handleCreateWorkspace = useCallback(async (folderPath: string, name: string, options?: { storageMode?: StorageMode; cloudWorkspaceId?: string }) => {
     setIsCreating(true)
     setSubmitError(null)
     try {
       const workspace = await window.electronAPI.createWorkspace(folderPath, name, {
-        storageMode: 'local_only',
+        storageMode: options?.storageMode ?? 'local',
+        ...(options?.cloudWorkspaceId && { cloudWorkspaceId: options.cloudWorkspaceId }),
       })
       onWorkspaceCreated(workspace)
     } catch (error) {
@@ -88,6 +98,11 @@ export function WorkspaceCreationScreen({
               setSubmitError(null)
               setStep('open')
             }}
+            onCreateTeam={() => {
+              setSubmitError(null)
+              setStep('team')
+            }}
+            isAuthenticated={isAuthenticated}
           />
         )
 
@@ -107,6 +122,19 @@ export function WorkspaceCreationScreen({
       case 'open':
         return (
           <AddWorkspaceStep_OpenFolder
+            onBack={() => {
+              setSubmitError(null)
+              setStep('choice')
+            }}
+            onCreate={handleCreateWorkspace}
+            isCreating={isCreating}
+            submitError={submitError}
+          />
+        )
+
+      case 'team':
+        return (
+          <AddWorkspaceStep_CreateTeam
             onBack={() => {
               setSubmitError(null)
               setStep('choice')

@@ -1,10 +1,13 @@
-import { FolderPlus, FolderOpen } from "lucide-react"
+import { FolderPlus, FolderOpen, Cloud } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AddWorkspaceContainer, AddWorkspaceStepHeader } from "./primitives"
 
 interface AddWorkspaceStep_ChoiceProps {
   onCreateNew: () => void
   onOpenFolder: () => void
+  onCreateTeam?: () => void
+  /** Whether the user is signed in (shows team workspace option) */
+  isAuthenticated?: boolean
 }
 
 interface ChoiceCardProps {
@@ -48,13 +51,16 @@ function ChoiceCard({ icon, title, description, onClick, variant = 'secondary' }
 /**
  * AddWorkspaceStep_Choice - Initial step to choose creation method
  *
- * Two options:
- * 1. Create new workspace - Creates a fresh workspace folder
+ * Options:
+ * 1. Create new workspace - Creates a fresh local workspace folder
  * 2. Open folder as workspace - Use an existing folder
+ * 3. Create team workspace - Creates a cloud-synced workspace (only when signed in)
  */
 export function AddWorkspaceStep_Choice({
   onCreateNew,
-  onOpenFolder
+  onOpenFolder,
+  onCreateTeam,
+  isAuthenticated = false,
 }: AddWorkspaceStep_ChoiceProps) {
   return (
     <AddWorkspaceContainer>
@@ -79,6 +85,16 @@ export function AddWorkspaceStep_Choice({
           description="Choose an existing folder as workspace."
           onClick={onOpenFolder}
         />
+
+        {isAuthenticated && onCreateTeam && (
+          <ChoiceCard
+            icon={<Cloud className="h-5 w-5" />}
+            title="Create team workspace"
+            description="A shared workspace visible to your team."
+            onClick={onCreateTeam}
+            variant="primary"
+          />
+        )}
       </div>
     </AddWorkspaceContainer>
   )

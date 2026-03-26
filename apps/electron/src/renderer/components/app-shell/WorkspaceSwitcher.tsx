@@ -1,6 +1,6 @@
 import * as React from "react"
 import { useState } from "react"
-import { Check, FolderPlus, ExternalLink, ChevronDown } from "lucide-react"
+import { Check, FolderPlus, ExternalLink, ChevronDown, Cloud } from "lucide-react"
 import { AnimatePresence } from "motion/react"
 import { useSetAtom } from "jotai"
 import { toast } from "sonner"
@@ -103,6 +103,9 @@ export function WorkspaceSwitcher({
                 fallback={selectedWorkspace?.name?.charAt(0) || 'W'}
               />
               <span className="truncate min-w-0 flex-1 text-left">{selectedWorkspace?.name || 'Workspace'}</span>
+              {selectedWorkspace?.storageMode === 'cloud' && (
+                <Cloud className="h-3 w-3 text-accent/70 shrink-0" />
+              )}
               <ChevronDown className="h-3 w-3 opacity-60 shrink-0" />
               {hasUnreadInOtherWorkspaces && <span className="h-2 w-2 rounded-full bg-accent shrink-0" />}
             </button>
@@ -162,6 +165,9 @@ export function WorkspaceSwitcher({
                   fallback={workspace.name.charAt(0)}
                 />
                 <span className="truncate">{workspace.name}</span>
+                {workspace.storageMode === 'cloud' && (
+                  <Cloud className="h-3 w-3 text-accent/70 shrink-0" />
+                )}
                 {workspaceUnreadMap?.[workspace.id] && <span className="h-2 w-2 rounded-full bg-accent shrink-0" />}
               </div>
               <div className="flex items-center gap-1">

@@ -74,7 +74,6 @@ export default function WorkspaceSettingsPage() {
 
   // Team Sync state
   const [cloudAuthState, setCloudAuthState] = useState<SupabaseAuthState | null>(null)
-  const [cloudWorkspaceName, setCloudWorkspaceName] = useState<string | null>(null)
   const [teamSyncLoading, setTeamSyncLoading] = useState(false)
   const [teamSyncError, setTeamSyncError] = useState<string>()
   const [teamSyncMode, setTeamSyncMode] = useState<'signin' | 'signup'>('signin')
@@ -145,17 +144,10 @@ export default function WorkspaceSettingsPage() {
           setWsIconUrl(null)
         }
 
-        // Load cloud sync state
+        // Load cloud auth state
         try {
           const authState = await window.electronAPI.supabaseGetUser()
           setCloudAuthState(authState)
-
-          if (authState.authenticated) {
-            const workspaces = await window.electronAPI.cloudWorkspaceList()
-            if (workspaces.length > 0) {
-              setCloudWorkspaceName(workspaces[0].name)
-            }
-          }
         } catch {
           // Cloud sync not available — ignore
         }
@@ -345,7 +337,7 @@ export default function WorkspaceSettingsPage() {
     [enabledModes, updateWorkspaceSetting]
   )
 
-  // Team Sync auth handler
+  // Team Sync auth handler — auth-only, no workspace provisioning
   const handleTeamSyncAuth = useCallback(async () => {
     if (!teamSyncEmail.trim() || !teamSyncPassword.trim()) {
       setTeamSyncError('Please enter both email and password.')
@@ -356,7 +348,6 @@ export default function WorkspaceSettingsPage() {
     setTeamSyncError(undefined)
 
     try {
-      // 1. Authenticate
       const result = teamSyncMode === 'signup'
         ? await window.electronAPI.supabaseSignUp(teamSyncEmail, teamSyncPassword)
         : await window.electronAPI.supabaseSignIn(teamSyncEmail, teamSyncPassword)
@@ -366,33 +357,9 @@ export default function WorkspaceSettingsPage() {
         return
       }
 
-      // 2. Provision workspace
-      const existingWorkspaces = await window.electronAPI.cloudWorkspaceList()
-      let cloudWorkspaceId: string
-      let wsName: string
-
-      if (existingWorkspaces.length > 0) {
-        cloudWorkspaceId = existingWorkspaces[0].id
-        wsName = existingWorkspaces[0].name
-      } else {
-        const createResult = await window.electronAPI.cloudWorkspaceCreate('My Workspace')
-        if (!createResult.success || !createResult.workspace) {
-          setTeamSyncError(createResult.error || 'Failed to create cloud workspace')
-          return
-        }
-        cloudWorkspaceId = createResult.workspace.id
-        wsName = createResult.workspace.name
-      }
-
-      // 3. Link to current workspace
-      if (activeWorkspaceId) {
-        await window.electronAPI.cloudWorkspaceLinkLocal(activeWorkspaceId, cloudWorkspaceId)
-      }
-
-      // 4. Update UI state
+      // Update UI state
       const authState = await window.electronAPI.supabaseGetUser()
       setCloudAuthState(authState)
-      setCloudWorkspaceName(wsName)
       setTeamSyncEmail('')
       setTeamSyncPassword('')
     } catch (err) {
@@ -400,14 +367,13 @@ export default function WorkspaceSettingsPage() {
     } finally {
       setTeamSyncLoading(false)
     }
-  }, [teamSyncEmail, teamSyncPassword, teamSyncMode, activeWorkspaceId])
+  }, [teamSyncEmail, teamSyncPassword, teamSyncMode])
 
   const handleTeamSyncSignOut = useCallback(async () => {
     setTeamSyncLoading(true)
     try {
       await window.electronAPI.supabaseSignOut()
       setCloudAuthState(null)
-      setCloudWorkspaceName(null)
     } finally {
       setTeamSyncLoading(false)
     }
@@ -598,7 +564,7 @@ export default function WorkspaceSettingsPage() {
             </SettingsSection>
 
             {/* Team Sync */}
-            <SettingsSection title="Team Sync" description="Sync data across devices with your team.">
+            <SettingsSection title="Team Sync" description="Sign in to enable team workspaces.">
               <SettingsCard>
                 {cloudAuthState?.authenticated ? (
                   <>
@@ -616,17 +582,19 @@ export default function WorkspaceSettingsPage() {
                         </button>
                       }
                     />
-                    {cloudWorkspaceName && (
-                      <SettingsRow
-                        label="Cloud Workspace"
-                        description={cloudWorkspaceName}
-                      />
-                    )}
+                    <SettingsRow
+                      label="Workspace Type"
+                      description={
+                        appShellContext.workspaces.find(w => w.id === activeWorkspaceId)?.storageMode === 'cloud'
+                          ? 'Team workspace — synced to cloud'
+                          : 'Local workspace — create a team workspace from the sidebar to collaborate'
+                      }
+                    />
                   </>
                 ) : (
                   <div className="px-4 py-4 space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Sign in or create an account to enable cloud sync.
+                      Sign in or create an account to enable team workspaces.
                     </p>
                     <input
                       type="email"

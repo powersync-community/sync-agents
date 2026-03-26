@@ -1113,7 +1113,7 @@ export class SessionManager implements ISessionManager {
    * Check if a workspace uses cloud storage.
    */
   private isCloudWorkspace(workspace: Workspace): boolean {
-    return workspace.storageMode === 'cloud_canonical' && this.cloudStorage !== null
+    return workspace.storageMode === 'cloud' && this.cloudStorage !== null
   }
 
   /**
@@ -1705,7 +1705,7 @@ export class SessionManager implements ISessionManager {
       // Initialize cloud session storage if a cloud-linked workspace exists
       if (this.powerSyncService) {
         const workspaces = getWorkspaces()
-        const cloudWs = workspaces.find(w => w.storageMode === 'cloud_canonical')
+        const cloudWs = workspaces.find(w => w.storageMode === 'cloud')
         if (cloudWs) {
           this.initCloudStorage(cloudWs)
         }

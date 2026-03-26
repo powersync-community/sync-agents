@@ -59,7 +59,7 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
 
     const { getWorkspaces } = await import('@craft-agent/shared/config/storage')
     const workspaces = getWorkspaces()
-    const cloudWs = workspaces.find(w => w.storageMode === 'cloud_canonical')
+    const cloudWs = workspaces.find(w => w.storageMode === 'cloud')
     if (!cloudWs) return
 
     const storagePaths = await ensureCloudWorkspaceStoragePaths(cloudWs.rootPath)
@@ -195,7 +195,7 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
     // Update workspace with cloud link
     addWorkspace({
       ...workspace,
-      storageMode: 'cloud_canonical',
+      storageMode: 'cloud',
       cloudWorkspaceId,
     })
 
@@ -207,7 +207,7 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
       link: {
         localWorkspaceId,
         cloudWorkspaceId,
-        storageMode: 'cloud_canonical',
+        storageMode: 'cloud',
       },
     }
   })

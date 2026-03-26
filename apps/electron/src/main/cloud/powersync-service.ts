@@ -15,7 +15,7 @@ export class PowerSyncService {
 
   /**
    * Initialize, connect, and wait for first sync.
-   * Called after successful auth when workspace has storageMode === 'cloud_canonical'.
+   * Called after successful auth when workspace has storageMode === 'cloud'.
    */
   async connect(options: {
     dbPath: string

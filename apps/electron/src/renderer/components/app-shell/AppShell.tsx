@@ -72,6 +72,7 @@ import { MainContentPanel } from "./MainContentPanel"
 import { PanelStackContainer } from "./PanelStackContainer"
 import type { ChatDisplayHandle } from "./ChatDisplay"
 import { LeftSidebar } from "./LeftSidebar"
+import { UserProfileFooter } from "./UserProfileFooter"
 import { useSession } from "@/hooks/useSession"
 import { ensureSessionMessagesLoadedAtom } from "@/atoms/sessions"
 import { AppShellProvider, type AppShellContextType } from "@/context/AppShellContext"
@@ -2472,6 +2473,8 @@ function AppShellContent({
                 </div>
               </div>
 
+              {/* User profile footer — shows when signed in */}
+              <UserProfileFooter />
             </div>
           </div>
           }
