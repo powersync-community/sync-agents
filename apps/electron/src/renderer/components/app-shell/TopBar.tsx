@@ -139,7 +139,7 @@ interface TopBarProps {
   activeWorkspaceId: string | null
   onSelectWorkspace: (workspaceId: string, openInNewWindow?: boolean) => void
   workspaceUnreadMap?: Record<string, boolean>
-  onWorkspaceCreated?: (workspace: Workspace) => void
+  onWorkspaceCreated?: (workspace: Workspace) => void | Promise<void>
   activeSessionId?: string | null
   onNewChat: () => void
   onNewWindow?: () => void

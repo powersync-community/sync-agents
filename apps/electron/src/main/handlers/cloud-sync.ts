@@ -51,35 +51,60 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
    * Called after sign-in or on startup when already authenticated.
    */
   async function connectPowerSyncForCloudWorkspace(): Promise<void> {
+    console.log('[CloudSync] connectPowerSyncForCloudWorkspace: starting')
     const powersyncUrl = process.env.POWERSYNC_URL?.trim()
-    if (!powersyncUrl) return
+    if (!powersyncUrl) {
+      console.warn('[CloudSync] connectPowerSyncForCloudWorkspace: no POWERSYNC_URL set, skipping')
+      return
+    }
 
     const supabaseClient = supabaseAuthService.getClient()
-    if (!supabaseClient) return
+    if (!supabaseClient) {
+      console.warn('[CloudSync] connectPowerSyncForCloudWorkspace: no Supabase client, skipping')
+      return
+    }
 
     const { getWorkspaces } = await import('@craft-agent/shared/config/storage')
     const workspaces = getWorkspaces()
+    console.log('[CloudSync] connectPowerSyncForCloudWorkspace: found workspaces:', workspaces.map(w => ({ id: w.id, storageMode: w.storageMode })))
     const cloudWs = workspaces.find(w => w.storageMode === 'cloud')
-    if (!cloudWs) return
+    if (!cloudWs) {
+      console.warn('[CloudSync] connectPowerSyncForCloudWorkspace: no cloud workspace found')
+      return
+    }
 
     const storagePaths = await ensureCloudWorkspaceStoragePaths(cloudWs.rootPath)
     const dbPath = join(storagePaths.dbDir, 'powersync.db')
+    console.log('[CloudSync] connectPowerSyncForCloudWorkspace: connecting PowerSync at', dbPath, 'to', powersyncUrl)
 
-    await powerSyncService.connect({
-      dbPath,
-      supabaseClient,
-      powersyncUrl,
-    })
+    try {
+      await powerSyncService.connect({
+        dbPath,
+        supabaseClient,
+        powersyncUrl,
+      })
+      console.log('[CloudSync] connectPowerSyncForCloudWorkspace: PowerSync connected successfully')
+    } catch (err) {
+      console.error('[CloudSync] connectPowerSyncForCloudWorkspace: PowerSync connect failed:', err)
+      throw err
+    }
   }
 
   // --- Auth handlers ---
 
   server.handle(RPC_CHANNELS.cloudSync.SIGN_IN, async (_ctx, email: string, password: string) => {
+    console.log('[CloudSync] SIGN_IN handler called')
     if (!cloudExperimentalEnabled) return { success: false, error: 'Cloud sync is not enabled' }
 
     const result = await supabaseAuthService.signIn(email, password)
+    console.log('[CloudSync] SIGN_IN: auth result:', { success: result.success, error: result.error })
     if (result.success) {
-      await connectPowerSyncForCloudWorkspace()
+      try {
+        await connectPowerSyncForCloudWorkspace()
+      } catch (err) {
+        console.error('[CloudSync] SIGN_IN: PowerSync connection failed after auth:', err)
+        // Don't fail the sign-in itself — auth succeeded
+      }
     }
     return result
   })
@@ -111,21 +136,27 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
   // --- Cloud workspace handlers ---
 
   server.handle(RPC_CHANNELS.cloudSync.WORKSPACE_LIST, async (): Promise<CloudWorkspace[]> => {
+    console.log('[CloudSync] WORKSPACE_LIST handler called')
     if (!cloudExperimentalEnabled) return []
 
     const client = supabaseAuthService.getClient()
-    if (!client) return []
+    if (!client) {
+      console.warn('[CloudSync] WORKSPACE_LIST: no Supabase client')
+      return []
+    }
 
     // Join through workspace_members to get role (RLS on cloud_workspaces requires membership)
+    console.log('[CloudSync] WORKSPACE_LIST: querying workspace_members...')
     const { data, error } = await client
       .from('workspace_members')
       .select('role, cloud_workspace_id, cloud_workspaces(id, name, created_at)')
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('[CloudSync] Failed to list workspaces:', error)
+      console.error('[CloudSync] WORKSPACE_LIST: query failed:', error.message, error.details, error.hint, error.code)
       return []
     }
+    console.log('[CloudSync] WORKSPACE_LIST: got', data?.length ?? 0, 'results')
 
     return (data ?? [])
       .filter(row => row.cloud_workspaces)

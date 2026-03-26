@@ -54,3 +54,17 @@ create policy "owner can insert membership"
     public.check_membership(cloud_workspace_id, auth.uid())
     or auth.uid() = user_id
   );
+
+-- Fix: scope the PowerSync publication to only the app tables.
+-- "FOR ALL TABLES" publishes every table in the database, including
+-- Supabase internal schemas (auth, storage, realtime, pgsodium, vault …).
+-- The PowerSync service cannot introspect those tables, which causes
+-- "Database error querying schema" during replication startup.
+DROP PUBLICATION IF EXISTS powersync;
+
+CREATE PUBLICATION powersync FOR TABLE
+  public.cloud_workspaces,
+  public.workspace_members,
+  public.chat_sessions,
+  public.chat_messages,
+  public.chat_attachments;

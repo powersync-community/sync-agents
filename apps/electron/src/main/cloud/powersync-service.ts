@@ -22,10 +22,15 @@ export class PowerSyncService {
     supabaseClient: SupabaseClient
     powersyncUrl: string
   }): Promise<void> {
-    if (this.connected && this.dbPath === options.dbPath) return
+    console.log('[PowerSync] connect: starting', { dbPath: options.dbPath, powersyncUrl: options.powersyncUrl })
+    if (this.connected && this.dbPath === options.dbPath) {
+      console.log('[PowerSync] connect: already connected to this db, skipping')
+      return
+    }
 
     // Close existing connection if switching workspaces
     if (this.db) {
+      console.log('[PowerSync] connect: closing existing connection')
       await this.disconnect()
     }
 
@@ -35,6 +40,7 @@ export class PowerSyncService {
       options.powersyncUrl,
     )
 
+    console.log('[PowerSync] connect: creating PowerSyncDatabase')
     this.db = new PowerSyncDatabase({
       schema: AppSchema,
       database: {
@@ -42,9 +48,26 @@ export class PowerSyncService {
       },
     })
 
+    // Log sync status changes for debugging
+    this.db.registerListener({
+      statusChanged: (status) => {
+        console.log('[PowerSync] statusChanged:', JSON.stringify({
+          connected: status.connected,
+          lastSyncedAt: status.lastSyncedAt?.toISOString(),
+          hasSynced: status.hasSynced,
+          downloading: status.dataFlowStatus?.downloading,
+          uploading: status.dataFlowStatus?.uploading,
+          downloadError: (status as any).downloadError?.message ?? null,
+          uploadError: (status as any).uploadError?.message ?? null,
+        }))
+      },
+    })
+
     // connect() is fire-and-forget — starts sync in background
+    console.log('[PowerSync] connect: calling db.connect(connector)...')
     await this.db.connect(this.connector)
     this.connected = true
+    console.log('[PowerSync] connect: db.connect() returned, waiting for first sync...')
 
     // Wait for first sync with timeout — don't block app startup forever
     try {

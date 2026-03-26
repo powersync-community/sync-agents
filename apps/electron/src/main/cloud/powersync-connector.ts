@@ -8,9 +8,14 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
   ) {}
 
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
+    console.log('[PowerSync] fetchCredentials: getting session...')
     const { data: { session } } = await this.supabaseClient.auth.getSession()
-    if (!session) return null
+    if (!session) {
+      console.error('[PowerSync] fetchCredentials: no active session')
+      return null
+    }
 
+    console.log('[PowerSync] fetchCredentials: returning credentials for endpoint:', this.powersyncUrl, 'token expires:', session.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'unknown')
     return {
       endpoint: this.powersyncUrl,
       token: session.access_token,

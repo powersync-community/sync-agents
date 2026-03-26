@@ -26,7 +26,7 @@ interface WorkspaceSwitcherProps {
   workspaces: Workspace[]
   activeWorkspaceId: string | null
   onSelect: (workspaceId: string, openInNewWindow?: boolean) => void
-  onWorkspaceCreated?: (workspace: Workspace) => void
+  onWorkspaceCreated?: (workspace: Workspace) => void | Promise<void>
   /** workspaceId -> has unread */
   workspaceUnreadMap?: Record<string, boolean>
 }
@@ -62,11 +62,11 @@ export function WorkspaceSwitcher({
     setFullscreenOverlayOpen(true)
   }
 
-  const handleWorkspaceCreated = (workspace: Workspace) => {
+  const handleWorkspaceCreated = async (workspace: Workspace) => {
     setShowCreationScreen(false)
     setFullscreenOverlayOpen(false)
     toast.success(`Created workspace "${workspace.name}"`)
-    onWorkspaceCreated?.(workspace)
+    await onWorkspaceCreated?.(workspace)
     onSelect(workspace.id)
   }
 

@@ -584,11 +584,12 @@ export default function WorkspaceSettingsPage() {
                     />
                     <SettingsRow
                       label="Workspace Type"
-                      description={
-                        appShellContext.workspaces.find(w => w.id === activeWorkspaceId)?.storageMode === 'cloud'
+                      description={(() => {
+                        const ws = appShellContext.workspaces.find(w => w.id === activeWorkspaceId)
+                        return (ws?.storageMode === 'cloud' || !!ws?.cloudWorkspaceId)
                           ? 'Team workspace — synced to cloud'
                           : 'Local workspace — create a team workspace from the sidebar to collaborate'
-                      }
+                      })()}
                     />
                   </>
                 ) : (

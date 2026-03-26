@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync } from 'fs';
-import { join, dirname, basename } from 'path';
+import { join, dirname, basename, resolve } from 'path';
 import { getCredentialManager } from '../credentials/index.ts';
 import { getOrCreateLatestSession, type SessionConfig } from '../sessions/index.ts';
 import {
@@ -661,11 +661,11 @@ export function syncWorkspaces(): void {
   if (!config) return;
 
   const discoveredPaths = discoverWorkspacesInDefaultLocation();
-  const trackedPaths = new Set(config.workspaces.map(w => w.rootPath));
+  const trackedPaths = new Set(config.workspaces.map(w => resolve(w.rootPath)));
 
   let added = false;
   for (const rootPath of discoveredPaths) {
-    if (trackedPaths.has(rootPath)) continue;
+    if (trackedPaths.has(resolve(rootPath))) continue;
 
     // Load the workspace config to get name
     const wsConfig = loadWorkspaceConfig(rootPath);

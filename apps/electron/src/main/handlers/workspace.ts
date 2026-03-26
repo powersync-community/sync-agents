@@ -57,13 +57,17 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
 
   // Create a new workspace at a folder path (Obsidian-style: folder IS the workspace)
   server.handle(RPC_CHANNELS.workspaces.CREATE, async (_ctx, folderPath: string, name: string, options?: { storageMode?: string; cloudWorkspaceId?: string }) => {
+    console.log('[Workspace] CREATE handler called:', { folderPath, name, options, optionsType: typeof options })
     const rootPath = folderPath
-    const workspace = addWorkspace({
+    const addWorkspaceInput = {
       name,
       rootPath,
       ...(options?.storageMode && { storageMode: options.storageMode as 'local' | 'cloud' }),
       ...(options?.cloudWorkspaceId && { cloudWorkspaceId: options.cloudWorkspaceId }),
-    })
+    }
+    console.log('[Workspace] addWorkspace input:', JSON.stringify(addWorkspaceInput))
+    const workspace = addWorkspace(addWorkspaceInput)
+    console.log('[Workspace] addWorkspace result:', JSON.stringify({ id: workspace.id, storageMode: workspace.storageMode, cloudWorkspaceId: workspace.cloudWorkspaceId }))
     // Make it active
     setActiveWorkspace(workspace.id)
     deps.platform.logger.info(`Created workspace "${name}" at ${rootPath} (mode: ${options?.storageMode ?? 'local'})`)

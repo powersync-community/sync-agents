@@ -2165,7 +2165,7 @@ function AppShellContent({
           activeWorkspaceId={activeWorkspaceId}
           onSelectWorkspace={onSelectWorkspace}
           workspaceUnreadMap={workspaceUnreadMap}
-          onWorkspaceCreated={() => onRefreshWorkspaces?.()}
+          onWorkspaceCreated={async () => { await onRefreshWorkspaces?.() }}
           activeSessionId={effectiveSessionId}
           onNewChat={() => handleNewChat()}
           onNewWindow={() => window.electronAPI.menuNewWindow()}

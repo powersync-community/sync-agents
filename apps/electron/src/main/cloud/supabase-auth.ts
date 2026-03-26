@@ -78,16 +78,26 @@ export class SupabaseAuthService {
   }
 
   async signIn(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+    console.log('[SupabaseAuth] signIn: starting for', email)
     await this.ensureInitialized()
-    if (!this.configured || !this.supabase) return { success: false, error: 'Supabase auth is not configured' }
+    if (!this.configured || !this.supabase) {
+      console.error('[SupabaseAuth] signIn: not configured (SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY missing)')
+      return { success: false, error: 'Supabase auth is not configured' }
+    }
 
+    console.log('[SupabaseAuth] signIn: calling signInWithPassword...')
     const { data, error } = await this.supabase.auth.signInWithPassword({ email, password })
-    if (error) return { success: false, error: error.message }
+    if (error) {
+      console.error('[SupabaseAuth] signIn: auth error:', error.message, error)
+      return { success: false, error: error.message }
+    }
 
     if (!data.session) {
+      console.error('[SupabaseAuth] signIn: no session returned')
       return { success: false, error: 'No active session returned' }
     }
 
+    console.log('[SupabaseAuth] signIn: success, user:', data.session.user.id)
     await this.persistSession(data.session)
     return { success: true }
   }

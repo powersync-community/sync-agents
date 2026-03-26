@@ -43,19 +43,34 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
   })
 
   // Create a new workspace at a folder path (Obsidian-style: folder IS the workspace)
-  server.handle(RPC_CHANNELS.workspaces.CREATE, async (_ctx, folderPath: string, name: string) => {
-    const rootPath = folderPath.trim()
-    const validation = isValidWorkspaceRootPath(rootPath)
-    if (!validation.valid) {
-      throw new Error(validation.reason!)
-    }
+  server.handle(
+    RPC_CHANNELS.workspaces.CREATE,
+    async (
+      _ctx,
+      folderPath: string,
+      name: string,
+      options?: { storageMode?: 'local' | 'cloud' | string; cloudWorkspaceId?: string },
+    ) => {
+      const rootPath = folderPath.trim()
+      const validation = isValidWorkspaceRootPath(rootPath)
+      if (!validation.valid) {
+        throw new Error(validation.reason!)
+      }
 
-    const workspace = addWorkspace({ name, rootPath })
-    // Make it active
-    setActiveWorkspace(workspace.id)
-    deps.platform.logger.info(`Created workspace "${name}" at ${rootPath}`)
-    return workspace
-  })
+      const workspace = addWorkspace({
+        name,
+        rootPath,
+        ...(options?.storageMode && { storageMode: options.storageMode as 'local' | 'cloud' }),
+        ...(options?.cloudWorkspaceId && { cloudWorkspaceId: options.cloudWorkspaceId }),
+      })
+      // Make it active
+      setActiveWorkspace(workspace.id)
+      deps.platform.logger.info(
+        `Created workspace "${name}" at ${rootPath} (mode: ${options?.storageMode ?? 'local'})`,
+      )
+      return workspace
+    },
+  )
 
   // Check if a workspace slug already exists (for validation before creation)
   server.handle(RPC_CHANNELS.workspaces.CHECK_SLUG, async (_ctx, slug: string) => {

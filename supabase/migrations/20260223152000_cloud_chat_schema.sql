@@ -314,5 +314,11 @@ end $$;
 
 -- Drop publication if it exists
 DROP PUBLICATION IF EXISTS powersync;
--- Create publication for PowerSync
-create publication powersync for all tables;
+-- Create publication for PowerSync (only app tables — "FOR ALL TABLES" breaks
+-- PowerSync on Supabase because internal schemas contain unsupported types)
+CREATE PUBLICATION powersync FOR TABLE
+  public.cloud_workspaces,
+  public.workspace_members,
+  public.chat_sessions,
+  public.chat_messages,
+  public.chat_attachments;

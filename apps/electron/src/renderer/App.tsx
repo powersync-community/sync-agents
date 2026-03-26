@@ -1516,8 +1516,9 @@ export default function App() {
   }, [workspaces, handleSelectWorkspace])
 
   // Handle workspace refresh (e.g., after icon upload)
-  const handleRefreshWorkspaces = useCallback(() => {
-    window.electronAPI.getWorkspaces().then(setWorkspaces)
+  const handleRefreshWorkspaces = useCallback(async () => {
+    const ws = await window.electronAPI.getWorkspaces()
+    setWorkspaces(ws)
   }, [])
 
   // Handle cancel during onboarding
