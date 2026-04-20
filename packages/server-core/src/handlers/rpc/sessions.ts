@@ -153,6 +153,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Delete a session
   server.handle(RPC_CHANNELS.sessions.DELETE, async (_ctx, sessionId: string) => {
+    sessionManager.assertSessionWritable(sessionId)
     return sessionManager.deleteSession(sessionId)
   })
 
@@ -163,6 +164,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   server.handle(RPC_CHANNELS.sessions.SEND_MESSAGE, async (ctx, sessionId: string, message: string, attachments?: FileAttachment[], storedAttachments?: StoredAttachment[], options?: SendMessageOptions) => {
     // Capture the caller's clientId for error routing
     const callerClientId = ctx.clientId
+
+    sessionManager.assertSessionWritable(sessionId)
 
     // Start processing in background, errors are sent via event stream
     sessionManager.sendMessage(sessionId, message, attachments, storedAttachments, options).catch(err => {
@@ -221,11 +224,22 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   // ==========================================================================
 
   // Session commands - consolidated handler for session operations
+  // Read-only commands that don't require ownership (safe for non-creators)
+  const READ_ONLY_SESSION_COMMANDS = new Set<string>([
+    'markRead',
+    'markUnread',
+    'setActiveViewing',
+    'showInFinder',
+    'copyPath',
+  ])
   server.handle(RPC_CHANNELS.sessions.COMMAND, async (
     _ctx,
     sessionId: string,
     command: import('@craft-agent/shared/protocol').SessionCommand
   ) => {
+    if (!READ_ONLY_SESSION_COMMANDS.has(command.type)) {
+      sessionManager.assertSessionWritable(sessionId)
+    }
     switch (command.type) {
       case 'flag':
         return sessionManager.flagSession(sessionId)

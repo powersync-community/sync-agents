@@ -888,6 +888,8 @@ interface ManagedSession {
   // Whether the previous turn was interrupted (for context injection on next message).
   // Ephemeral — not persisted to disk. Cleared after one-shot injection.
   wasInterrupted?: boolean
+  // Supabase auth user id of the session creator (cloud workspaces only).
+  createdBy?: string
 }
 
 /**
@@ -1126,6 +1128,32 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
+   * Returns the current Supabase user id, or null when unauthenticated.
+   */
+  private getCurrentUserId(): string | null {
+    return this.supabaseAuthService?.getCurrentUserIdSync?.() ?? null
+  }
+
+  /**
+   * Throws if the caller is not the creator of a cloud-workspace session.
+   * Local sessions are always writable by the logged-in user.
+   */
+  assertSessionWritable(sessionId: string): void {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    if (managed.workspace.storageMode !== 'cloud') return
+    const createdBy = managed.createdBy
+    if (!createdBy) return
+    const currentUserId = this.getCurrentUserId()
+    if (!currentUserId) {
+      throw new Error('Sign in required to modify this session')
+    }
+    if (currentUserId !== createdBy) {
+      throw new Error('This session is read-only — it was created by another member of the workspace')
+    }
+  }
+
+  /**
    * Check if a workspace uses cloud storage.
    */
   private isCloudWorkspace(workspace: Workspace): boolean {
@@ -1181,6 +1209,7 @@ export class SessionManager implements ISessionManager {
         existing.sharedId = meta.sharedId
         existing.workingDirectory = meta.workingDirectory
         existing.sdkCwd = meta.sdkCwd
+        existing.createdBy = meta.createdBy
         changed = true
         continue
       }
@@ -1262,6 +1291,7 @@ export class SessionManager implements ISessionManager {
               existing.messageCount = row.message_count ?? 0
               existing.lastMessageAt = row.last_message_at ? new Date(row.last_message_at).getTime() : existing.lastMessageAt
               existing.lastMessageRole = row.last_message_role ?? undefined
+              existing.createdBy = row.created_by ?? existing.createdBy
               changed = true
             } else {
               // New session from another device — add to in-memory cache
@@ -1295,6 +1325,7 @@ export class SessionManager implements ISessionManager {
                 sharedUrl: metadata.sharedUrl,
                 sharedId: metadata.sharedId,
                 hidden: metadata.hidden,
+                createdBy: row.created_by ?? undefined,
                 messageQueue: [],
                 backgroundShellCommands: new Map(),
                 backgroundTaskOutputs: new Map(),

@@ -208,6 +208,10 @@ interface ChatDisplayProps {
   emptyStateLabel?: string
   /** When true, the session's locked connection has been removed - disables send and shows unavailable state */
   connectionUnavailable?: boolean
+  /** When true, session is read-only (created by another cloud workspace member). Hides input and disables sending. */
+  isReadOnly?: boolean
+  /** Email of the session creator, shown in the read-only banner when available. */
+  readOnlyCreatorEmail?: string
 }
 
 type PendingFollowUpAnnotation = {
@@ -528,6 +532,9 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   emptyStateLabel,
   // Connection unavailable
   connectionUnavailable = false,
+  // Read-only (cloud workspace, session owned by another member)
+  isReadOnly = false,
+  readOnlyCreatorEmail,
 }, ref) {
   // Panel focus state (for multi-panel auto-scroll behavior)
   const appShellContext = useAppShellContext()
@@ -2021,6 +2028,16 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
           </div>
 
           {/* === INPUT CONTAINER: FreeForm or Structured Input === */}
+          {isReadOnly ? (
+            <div className="px-4 py-3 border-t border-border/40 bg-muted/30 text-xs text-muted-foreground flex items-center gap-2">
+              <Info className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
+                Read-only session
+                {readOnlyCreatorEmail ? <> — created by <span className="font-medium text-foreground/80">{readOnlyCreatorEmail}</span></> : null}
+                . Only the creator can send messages or edit this session.
+              </span>
+            </div>
+          ) : (
           <ChatInputZone
             compactMode={compactMode}
             permissionMode={permissionMode}
@@ -2075,6 +2092,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               onFollowUpIndexClick: handleFollowUpIndexClick,
             }}
           />
+          )}
           </div>
         </div>
       ) : null}

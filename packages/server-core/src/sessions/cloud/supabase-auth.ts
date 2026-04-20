@@ -23,4 +23,6 @@ export declare class SupabaseAuthService {
   signOut(): Promise<{ success: boolean; error?: string }>
   getAuthState(): Promise<SupabaseAuthState>
   getClient(): SupabaseClient | null
+  /** Synchronous accessor for the currently signed-in user id, or null when unauthenticated. */
+  getCurrentUserIdSync(): string | null
 }

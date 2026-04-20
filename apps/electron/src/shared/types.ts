@@ -96,6 +96,12 @@ export interface CloudWorkspace {
   role?: string
 }
 
+export interface CloudWorkspaceMember {
+  userId: string
+  email?: string
+  role: string
+}
+
 export type StorageMode = 'local' | 'cloud'
 
 export interface WorkspaceLinkState {
@@ -436,6 +442,8 @@ export interface Session {
   isArchived?: boolean
   /** Timestamp when session was archived (for retention policy) */
   archivedAt?: number
+  /** Supabase auth user id of the session creator (cloud workspaces only). */
+  createdBy?: string
   // Sub-session hierarchy (1 level max)
   /** Parent session ID (if this is a sub-session). Null/undefined = root session. */
   parentSessionId?: string
@@ -1186,6 +1194,7 @@ export interface ElectronAPI {
   cloudWorkspaceList(): Promise<CloudWorkspace[]>
   cloudWorkspaceCreate(name: string): Promise<{ success: boolean; error?: string; workspace?: CloudWorkspace }>
   cloudWorkspaceLinkLocal(localWorkspaceId: string, cloudWorkspaceId: string): Promise<{ success: boolean; error?: string; link?: WorkspaceLinkState }>
+  cloudWorkspaceMembers(cloudWorkspaceId: string): Promise<CloudWorkspaceMember[]>
   syncGetStatus(): Promise<SyncStatus>
   syncReconnect(): Promise<{ success: boolean; error?: string }>
 

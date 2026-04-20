@@ -12,7 +12,7 @@ import type { HandlerDeps } from './handler-deps'
 import { SupabaseAuthService } from '../cloud/supabase-auth'
 import { PowerSyncService } from '../cloud/powersync-service'
 import { ensureCloudWorkspaceStoragePaths } from '../cloud/workspace-storage'
-import type { CloudWorkspace, WorkspaceLinkState } from '../../shared/types'
+import type { CloudWorkspace, CloudWorkspaceMember, WorkspaceLinkState } from '../../shared/types'
 
 export const CLOUD_SYNC_HANDLED_CHANNELS = [
   RPC_CHANNELS.cloudSync.SIGN_IN,
@@ -22,6 +22,7 @@ export const CLOUD_SYNC_HANDLED_CHANNELS = [
   RPC_CHANNELS.cloudSync.WORKSPACE_LIST,
   RPC_CHANNELS.cloudSync.WORKSPACE_CREATE,
   RPC_CHANNELS.cloudSync.WORKSPACE_LINK_LOCAL,
+  RPC_CHANNELS.cloudSync.WORKSPACE_MEMBERS,
   RPC_CHANNELS.cloudSync.GET_STATUS,
   RPC_CHANNELS.cloudSync.RECONNECT,
 ] as const
@@ -288,6 +289,36 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
         storageMode: 'cloud',
       },
     }
+  })
+
+  server.handle(RPC_CHANNELS.cloudSync.WORKSPACE_MEMBERS, async (_ctx, cloudWorkspaceId: string): Promise<CloudWorkspaceMember[]> => {
+    if (!cloudExperimentalEnabled) return []
+
+    const client = supabaseAuthService.getClient()
+    if (!client) return []
+
+    // Supabase RPC that resolves user emails from auth.users via SECURITY DEFINER.
+    // Falls back to a direct workspace_members query (userId only) if the RPC
+    // is not available — callers should treat email as optional.
+    const rpc = await client.rpc('workspace_member_emails', { workspace_id: cloudWorkspaceId })
+    if (!rpc.error && Array.isArray(rpc.data)) {
+      return rpc.data.map((row: any) => ({
+        userId: row.user_id,
+        email: row.email ?? undefined,
+        role: row.role,
+      }))
+    }
+
+    const { data, error } = await client
+      .from('workspace_members')
+      .select('user_id, role')
+      .eq('cloud_workspace_id', cloudWorkspaceId)
+
+    if (error || !data) return []
+    return data.map(row => ({
+      userId: row.user_id,
+      role: row.role,
+    }))
   })
 
   // --- Sync status handlers ---

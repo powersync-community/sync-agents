@@ -6,9 +6,19 @@ export class SupabaseAuthService {
   private supabase: SupabaseClient | null = null
   private configured = false
   private initialized = false
+  private cachedUserId: string | null = null
 
   getClient(): SupabaseClient | null {
     return this.supabase
+  }
+
+  /**
+   * Synchronous accessor for the currently signed-in user id.
+   * Reflects the last-known auth state (updated on sign-in, sign-out, refresh).
+   * Returns null when not signed in or before initialize() completes.
+   */
+  getCurrentUserIdSync(): string | null {
+    return this.cachedUserId
   }
 
   private getSupabaseConfig(): { url: string; anonKey: string } | null {
@@ -68,11 +78,13 @@ export class SupabaseAuthService {
       if (error) {
         await manager.deleteSupabaseAuth()
       } else {
+        this.cachedUserId = data.session?.user?.id ?? null
         await this.persistSession(data.session)
       }
     }
 
     this.supabase.auth.onAuthStateChange((_event, session) => {
+      this.cachedUserId = session?.user?.id ?? null
       void this.persistSession(session)
     })
   }
@@ -98,6 +110,7 @@ export class SupabaseAuthService {
     }
 
     console.log('[SupabaseAuth] signIn: success, user:', data.session.user.id)
+    this.cachedUserId = data.session.user.id
     await this.persistSession(data.session)
     return { success: true }
   }
@@ -113,6 +126,7 @@ export class SupabaseAuthService {
       return { success: false, error: 'No active session returned — email confirmation may be required' }
     }
 
+    this.cachedUserId = data.session.user.id
     await this.persistSession(data.session)
     return { success: true }
   }
@@ -122,6 +136,7 @@ export class SupabaseAuthService {
     if (!this.configured || !this.supabase) return { success: false, error: 'Supabase auth is not configured' }
 
     const { error } = await this.supabase.auth.signOut()
+    this.cachedUserId = null
     await this.persistSession(null)
     if (error) return { success: false, error: error.message }
     return { success: true }

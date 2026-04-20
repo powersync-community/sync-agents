@@ -333,6 +333,7 @@ export const RPC_CHANNELS = {
     WORKSPACE_LIST: 'cloudSync:workspaceList',
     WORKSPACE_CREATE: 'cloudSync:workspaceCreate',
     WORKSPACE_LINK_LOCAL: 'cloudSync:workspaceLinkLocal',
+    WORKSPACE_MEMBERS: 'cloudSync:workspaceMembers',
     GET_STATUS: 'cloudSync:getStatus',
     RECONNECT: 'cloudSync:reconnect',
   },

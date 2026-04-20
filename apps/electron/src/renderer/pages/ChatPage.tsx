@@ -20,6 +20,8 @@ import { useAppShellContext, usePendingPermission, usePendingCredential, useSess
 import { rendererPerf } from '@/lib/perf'
 import { routes } from '@/lib/navigate'
 import { ensureSessionMessagesLoadedAtom, loadedSessionsAtom, sessionMetaMapAtom } from '@/atoms/sessions'
+import { useCurrentUser } from '@/atoms/auth'
+import { useMemberLookup } from '@/atoms/workspace-members'
 import { getSessionTitle } from '@/utils/session'
 // Model resolution: connection.defaultModel (no hardcoded defaults)
 import { resolveEffectiveConnectionSlug, isSessionConnectionUnavailable } from '@config/llm-connections'
@@ -224,6 +226,22 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
     () => workspaces.find((w) => w.id === activeWorkspaceId) || null,
     [workspaces, activeWorkspaceId]
   )
+
+  // Read-only session detection (cloud workspace + created by another member).
+  const currentUser = useCurrentUser()
+  const cloudWorkspaceId = activeWorkspace?.storageMode === 'cloud' ? activeWorkspace?.cloudWorkspaceId : undefined
+  const memberLookup = useMemberLookup(cloudWorkspaceId)
+  const sessionCreatedBy = session?.createdBy ?? sessionMeta?.createdBy
+  const isReadOnly = Boolean(
+    cloudWorkspaceId &&
+    sessionCreatedBy &&
+    currentUser?.id &&
+    sessionCreatedBy !== currentUser.id
+  )
+  const readOnlyCreatorEmail = React.useMemo(() => {
+    if (!isReadOnly || !sessionCreatedBy) return undefined
+    return memberLookup(sessionCreatedBy)?.email
+  }, [isReadOnly, sessionCreatedBy, memberLookup])
   const handleWorkingDirectoryChange = React.useCallback(async (path: string) => {
     if (!session) return
     await window.electronAPI.sessionCommand(session.id, { type: 'updateWorkingDirectory', dir: path })
@@ -497,6 +515,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
       onSessionStatusChange={handleSessionStatusChange}
       onOpenInNewWindow={handleOpenInNewWindow}
       onDelete={handleDelete}
+      isReadOnly={isReadOnly}
     />
   ) : null, [
     sessionMeta,
@@ -512,6 +531,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
     handleSessionStatusChange,
     handleOpenInNewWindow,
     handleDelete,
+    isReadOnly,
   ])
 
   // Handle missing session - loading or deleted
@@ -535,7 +555,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
       return (
         <>
           <div className="h-full flex flex-col">
-            <PanelHeader  title={displayTitle} titleMenu={titleMenu} actions={shareButton} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
+            <PanelHeader  title={displayTitle} badge={isReadOnly ? <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-muted text-muted-foreground font-medium">Read-only</span> : undefined} titleMenu={titleMenu} actions={shareButton} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
             <div className="flex-1 flex flex-col min-h-0">
               <ChatDisplay
                 ref={chatDisplayRef}
@@ -570,6 +590,8 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
                 isSearchModeActive={isSearchModeActive}
                 onMatchInfoChange={onChatMatchInfoChange}
                 connectionUnavailable={connectionUnavailable}
+                isReadOnly={isReadOnly}
+                readOnlyCreatorEmail={readOnlyCreatorEmail}
               />
             </div>
           </div>

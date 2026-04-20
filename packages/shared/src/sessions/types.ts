@@ -42,6 +42,8 @@ export const SESSION_PERSISTENT_FIELDS = [
   'pendingPlanExecution',
   // Archive
   'isArchived', 'archivedAt',
+  // Cloud ownership (set on cloud-workspace sessions)
+  'createdBy',
   // Branching
   'branchFromMessageId',
   'branchFromSdkSessionId',
@@ -161,6 +163,8 @@ export interface SessionConfig {
   isArchived?: boolean;
   /** Timestamp when session was archived (for retention policy) */
   archivedAt?: number;
+  /** Supabase auth user id of the session creator (cloud workspaces only). */
+  createdBy?: string;
   /**
    * Message ID this session was branched from.
    * Branching semantics are a hard cutoff: model context must not include parent messages after this message.
@@ -351,4 +355,6 @@ export interface SessionMetadata {
   archivedAt?: number;
   /** Message ID that this session was branched from (hard context cutoff marker). */
   branchFromMessageId?: string;
+  /** Supabase auth user id of the session creator (cloud workspaces only). */
+  createdBy?: string;
 }

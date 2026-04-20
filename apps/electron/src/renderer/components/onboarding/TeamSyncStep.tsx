@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { Cloud } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StepFormLayout, BackButton, ContinueButton } from './primitives'
+import { useRefreshCurrentUser } from '@/atoms/auth'
 
 type AuthMode = 'signin' | 'signup'
 type AuthStatus = 'idle' | 'loading' | 'error' | 'success'
@@ -18,6 +19,7 @@ export function TeamSyncStep({ onComplete, onBack, onSkip }: TeamSyncStepProps) 
   const [password, setPassword] = useState('')
   const [status, setStatus] = useState<AuthStatus>('idle')
   const [errorMessage, setErrorMessage] = useState<string>()
+  const refreshCurrentUser = useRefreshCurrentUser()
 
   const handleSubmit = useCallback(async () => {
     if (!email.trim() || !password.trim()) {
@@ -42,13 +44,14 @@ export function TeamSyncStep({ onComplete, onBack, onSkip }: TeamSyncStepProps) 
 
       // Auth-only: no workspace provisioning or linking.
       // User creates/joins cloud workspaces later from the workspace creation flow.
+      await refreshCurrentUser()
       setStatus('success')
       setTimeout(() => onComplete(), 800)
     } catch (err) {
       setStatus('error')
       setErrorMessage(err instanceof Error ? err.message : 'Authentication failed')
     }
-  }, [email, password, mode, onComplete])
+  }, [email, password, mode, onComplete, refreshCurrentUser])
 
   const toggleMode = useCallback(() => {
     setMode(m => m === 'signin' ? 'signup' : 'signin')

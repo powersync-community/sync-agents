@@ -349,6 +349,7 @@ export const CHANNEL_MAP = {
   cloudWorkspaceList: invoke(RPC_CHANNELS.cloudSync.WORKSPACE_LIST),
   cloudWorkspaceCreate: invoke(RPC_CHANNELS.cloudSync.WORKSPACE_CREATE),
   cloudWorkspaceLinkLocal: invoke(RPC_CHANNELS.cloudSync.WORKSPACE_LINK_LOCAL),
+  cloudWorkspaceMembers: invoke(RPC_CHANNELS.cloudSync.WORKSPACE_MEMBERS),
   syncGetStatus: invoke(RPC_CHANNELS.cloudSync.GET_STATUS),
   syncReconnect: invoke(RPC_CHANNELS.cloudSync.RECONNECT),
 

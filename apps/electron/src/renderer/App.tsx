@@ -43,6 +43,7 @@ import {
   windowWorkspaceIdAtom,
   type SessionMeta,
 } from '@/atoms/sessions'
+import { useInitCurrentUser } from '@/atoms/auth'
 import { sourcesAtom } from '@/atoms/sources'
 import { skillsAtom } from '@/atoms/skills'
 import { extractBadges } from '@/lib/mentions'
@@ -162,6 +163,8 @@ export default function App() {
       initRendererPerf(isDebug)
     })
   }, [])
+
+  useInitCurrentUser()
 
   // App state: loading -> check auth -> onboarding or ready
   const [appState, setAppState] = useState<AppState>('loading')

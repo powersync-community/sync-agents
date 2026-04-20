@@ -172,6 +172,7 @@ export class CloudSessionStorage {
       sessionStatus: options?.sessionStatus,
       labels: options?.labels,
       isFlagged: options?.isFlagged,
+      createdBy: this.userId,
     }
   }
 
@@ -301,6 +302,7 @@ export class CloudSessionStorage {
       preview: row.preview ?? undefined,
       lastMessageRole: row.last_message_role ?? undefined,
       isArchived: row.archived === 1 || row.archived === true,
+      createdBy: row.created_by ?? undefined,
       // Synced metadata
       permissionMode: localState.permissionMode as any,
       thinkingLevel: metadata.thinkingLevel as any,
@@ -342,6 +344,7 @@ export class CloudSessionStorage {
       lastUsedAt: new Date(row.updated_at).getTime(),
       lastMessageAt: row.last_message_at ? new Date(row.last_message_at).getTime() : undefined,
       isArchived: row.archived === 1 || row.archived === true,
+      createdBy: row.created_by ?? undefined,
       messages,
       // Synced metadata
       permissionMode: localState.permissionMode as any,

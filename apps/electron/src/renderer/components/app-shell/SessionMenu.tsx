@@ -67,6 +67,8 @@ export interface SessionMenuProps {
   onSessionStatusChange: (state: SessionStatusId) => void
   onOpenInNewWindow: () => void
   onDelete: () => void
+  /** When true, disables/hides mutating actions (rename, flag, archive, status, labels, delete, title regen). */
+  isReadOnly?: boolean
 }
 
 /**
@@ -87,6 +89,7 @@ export function SessionMenu({
   onSessionStatusChange,
   onOpenInNewWindow,
   onDelete,
+  isReadOnly = false,
 }: SessionMenuProps) {
   // Derive display state from item
   const sessionId = item.id
@@ -184,6 +187,7 @@ export function SessionMenu({
       <Separator />
 
       {/* Status submenu - includes all statuses plus Flag/Unflag at the bottom */}
+      {!isReadOnly && (
       <Sub>
         <SubTrigger className="pr-2">
           <span style={{ color: getStateColor(currentSessionStatus, sessionStatuses) ?? 'var(--foreground)' }}>
@@ -205,9 +209,10 @@ export function SessionMenu({
           />
         </SubContent>
       </Sub>
+      )}
 
       {/* Labels submenu - hierarchical label tree with nested sub-menus and toggle checkmarks */}
-      {labels.length > 0 && (
+      {!isReadOnly && labels.length > 0 && (
         <Sub>
           <SubTrigger className="pr-2">
             <Tag className="h-3.5 w-3.5" />
@@ -230,7 +235,7 @@ export function SessionMenu({
       )}
 
       {/* Flag/Unflag */}
-      {!isFlagged ? (
+      {!isReadOnly && (!isFlagged ? (
         <MenuItem onClick={onFlag}>
           <Flag className="h-3.5 w-3.5 text-info" />
           <span className="flex-1">Flag</span>
@@ -240,10 +245,10 @@ export function SessionMenu({
           <FlagOff className="h-3.5 w-3.5" />
           <span className="flex-1">Unflag</span>
         </MenuItem>
-      )}
+      ))}
 
       {/* Archive/Unarchive */}
-      {!isArchived ? (
+      {!isReadOnly && (!isArchived ? (
         <MenuItem onClick={onArchive}>
           <Archive className="h-3.5 w-3.5" />
           <span className="flex-1">Archive</span>
@@ -253,7 +258,7 @@ export function SessionMenu({
           <ArchiveRestore className="h-3.5 w-3.5" />
           <span className="flex-1">Unarchive</span>
         </MenuItem>
-      )}
+      ))}
 
       {/* Mark as Unread - only show if session has been read */}
       {!_hasUnread && _hasMessages && (
@@ -263,19 +268,23 @@ export function SessionMenu({
         </MenuItem>
       )}
 
-      <Separator />
+      {!isReadOnly && <Separator />}
 
       {/* Rename */}
-      <MenuItem onClick={onRename}>
-        <Pencil className="h-3.5 w-3.5" />
-        <span className="flex-1">Rename</span>
-      </MenuItem>
+      {!isReadOnly && (
+        <MenuItem onClick={onRename}>
+          <Pencil className="h-3.5 w-3.5" />
+          <span className="flex-1">Rename</span>
+        </MenuItem>
+      )}
 
       {/* Regenerate Title - AI-generate based on recent messages */}
-      <MenuItem onClick={handleRefreshTitle}>
-        <RefreshCw className="h-3.5 w-3.5" />
-        <span className="flex-1">Regenerate Title</span>
-      </MenuItem>
+      {!isReadOnly && (
+        <MenuItem onClick={handleRefreshTitle}>
+          <RefreshCw className="h-3.5 w-3.5" />
+          <span className="flex-1">Regenerate Title</span>
+        </MenuItem>
+      )}
 
       <Separator />
 
@@ -303,13 +312,16 @@ export function SessionMenu({
         <span className="flex-1">Copy Path</span>
       </MenuItem>
 
-      <Separator />
-
-      {/* Delete */}
-      <MenuItem onClick={onDelete} variant="destructive">
-        <Trash2 className="h-3.5 w-3.5" />
-        <span className="flex-1">Delete</span>
-      </MenuItem>
+      {!isReadOnly && (
+        <>
+          <Separator />
+          {/* Delete */}
+          <MenuItem onClick={onDelete} variant="destructive">
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="flex-1">Delete</span>
+          </MenuItem>
+        </>
+      )}
     </>
   )
 }

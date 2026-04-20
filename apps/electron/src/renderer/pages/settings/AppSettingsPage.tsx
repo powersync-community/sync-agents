@@ -32,6 +32,7 @@ import {
   SettingsInput,
 } from '@/components/settings'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
+import { useRefreshCurrentUser } from '@/atoms/auth'
 
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
@@ -116,6 +117,8 @@ export default function AppSettingsPage() {
   // Auto-update state
   const updateChecker = useUpdateChecker()
   const [isCheckingForUpdates, setIsCheckingForUpdates] = useState(false)
+
+  const refreshCurrentUser = useRefreshCurrentUser()
 
   const handleCheckForUpdates = useCallback(async () => {
     setIsCheckingForUpdates(true)
@@ -222,6 +225,7 @@ export default function AppSettingsPage() {
 
       const authState = await window.electronAPI.supabaseGetUser()
       setCloudAuthState(authState)
+      await refreshCurrentUser()
       setTeamSyncEmail('')
       setTeamSyncPassword('')
     } catch (err) {
@@ -229,17 +233,18 @@ export default function AppSettingsPage() {
     } finally {
       setTeamSyncLoading(false)
     }
-  }, [teamSyncEmail, teamSyncPassword, teamSyncMode])
+  }, [teamSyncEmail, teamSyncPassword, teamSyncMode, refreshCurrentUser])
 
   const handleTeamSyncSignOut = useCallback(async () => {
     setTeamSyncLoading(true)
     try {
       await window.electronAPI.supabaseSignOut()
       setCloudAuthState(null)
+      await refreshCurrentUser()
     } finally {
       setTeamSyncLoading(false)
     }
-  }, [])
+  }, [refreshCurrentUser])
 
   return (
     <div className="h-full flex flex-col">

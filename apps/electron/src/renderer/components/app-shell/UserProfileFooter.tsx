@@ -1,35 +1,29 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { LogOut, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
+import { useCurrentUser, useRefreshCurrentUser } from '@/atoms/auth'
 
 /**
  * UserProfileFooter - Compact user profile at the bottom of the sidebar.
  * Shows email + sign-out when authenticated, nothing when not.
  */
 export function UserProfileFooter() {
-  const [email, setEmail] = useState<string | null>(null)
+  const currentUser = useCurrentUser()
+  const refreshCurrentUser = useRefreshCurrentUser()
   const [isSigningOut, setIsSigningOut] = useState(false)
 
-  useEffect(() => {
-    window.electronAPI.supabaseGetUser()
-      .then(state => {
-        if (state.authenticated && state.user?.email) {
-          setEmail(state.user.email)
-        }
-      })
-      .catch(() => {})
-  }, [])
+  const email = currentUser?.email ?? null
 
   const handleSignOut = useCallback(async () => {
     setIsSigningOut(true)
     try {
       await window.electronAPI.supabaseSignOut()
-      setEmail(null)
+      await refreshCurrentUser()
     } finally {
       setIsSigningOut(false)
     }
-  }, [])
+  }, [refreshCurrentUser])
 
   if (!email) return null
 

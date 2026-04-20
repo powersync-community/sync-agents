@@ -1,6 +1,6 @@
 import { formatDistanceToNowStrict } from "date-fns"
 import type { Locale } from "date-fns"
-import { Flag, ShieldAlert } from "lucide-react"
+import { Flag, ShieldAlert, Eye } from "lucide-react"
 import { useActionLabel } from "@/actions"
 import { cn } from "@/lib/utils"
 import { rendererPerf } from "@/lib/perf"
@@ -12,6 +12,9 @@ import { SessionStatusIcon } from "./SessionStatusIcon"
 import { SessionBadges } from "./SessionBadges"
 import { getSessionTitle, highlightMatch, hasUnreadMeta, shortTimeLocale } from "@/utils/session"
 import { useSessionListContext } from "@/context/SessionListContext"
+import { useActiveWorkspace } from "@/context/AppShellContext"
+import { useCurrentUser } from "@/atoms/auth"
+import { useMemberLookup } from "@/atoms/workspace-members"
 import { navigate, routes } from "@/lib/navigate"
 import type { SessionMeta } from "@/atoms/sessions"
 import { extractLabelId } from "@craft-agent/shared/labels"
@@ -42,6 +45,20 @@ export function SessionItem({
   const { hotkey: nextHotkey } = useActionLabel('chat.nextSearchMatch')
   const { hotkey: prevHotkey } = useActionLabel('chat.prevSearchMatch')
   const title = getSessionTitle(item)
+
+  // Read-only detection: cloud workspace + session created by another user.
+  const activeWorkspace = useActiveWorkspace()
+  const currentUser = useCurrentUser()
+  const cloudWorkspaceId = activeWorkspace?.storageMode === 'cloud' ? activeWorkspace?.cloudWorkspaceId : undefined
+  const memberLookup = useMemberLookup(cloudWorkspaceId)
+  const isReadOnly = !!(
+    cloudWorkspaceId &&
+    item.createdBy &&
+    currentUser?.id &&
+    item.createdBy !== currentUser.id
+  )
+  const creatorEmail = isReadOnly && item.createdBy ? memberLookup(item.createdBy)?.email : undefined
+  const creatorInitial = (creatorEmail?.charAt(0) ?? '?').toUpperCase()
   const chatMatchCount = ctx.contentSearchResults.get(item.id)?.matchCount
   const hasMatch = chatMatchCount != null && chatMatchCount > 0
   const hasLabels = !!(item.labels && item.labels.length > 0 && ctx.flatLabels.length > 0 && item.labels.some(entry => {
@@ -108,12 +125,21 @@ export function SessionItem({
           onSessionStatusChange={(s) => ctx.onSessionStatusChange(item.id, s)}
           onOpenInNewWindow={() => ctx.onOpenInNewWindow(item)}
           onDelete={() => ctx.onDelete(item.id)}
+          isReadOnly={isReadOnly}
         />
       }
       contextMenuContent={ctx.isMultiSelectActive && isInMultiSelect ? <BatchSessionMenu /> : undefined}
       icon={
         <>
           <SessionStatusIcon item={item} />
+          {isReadOnly && (
+            <span
+              title={creatorEmail ? `Read-only — created by ${creatorEmail}` : 'Read-only session'}
+              className="inline-flex items-center justify-center h-[14px] min-w-[14px] px-[3px] rounded-full bg-muted text-[9px] font-semibold text-muted-foreground shrink-0"
+            >
+              {creatorEmail ? creatorInitial : <Eye className="h-2.5 w-2.5" />}
+            </span>
+          )}
           <div className={cn(
             "flex items-center justify-center overflow-hidden gap-1",
             "transition-all duration-200 ease-out",

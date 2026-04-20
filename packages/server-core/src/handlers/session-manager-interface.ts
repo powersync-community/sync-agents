@@ -60,6 +60,8 @@ export interface ISessionManager {
   markAllSessionsRead(workspaceId: string): Promise<void>
   setActiveViewingSession(sessionId: string | null, workspaceId: string): void
   clearActiveViewingSession(workspaceId: string): void
+  /** Throws if the caller does not own a cloud-workspace session. No-op for local/owned sessions. */
+  assertSessionWritable(sessionId: string): void
 
   // ---------------------------------------------------------------------------
   // Session configuration

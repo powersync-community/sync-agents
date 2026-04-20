@@ -74,6 +74,8 @@ export interface SessionMeta {
   isArchived?: boolean
   /** Timestamp when session was archived (for retention policy) */
   archivedAt?: number
+  /** Supabase auth user id of the session creator (cloud workspaces only). */
+  createdBy?: string
 }
 
 /**
