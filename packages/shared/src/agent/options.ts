@@ -1,6 +1,7 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { join, dirname } from "path";
 import { homedir } from "os";
+import { CONFIG_DIR } from '../config/paths.ts';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from "fs";
 import { debug } from "../utils/debug";
 import { getProxyEnvVars } from "../config/proxy-env.ts";
@@ -193,6 +194,10 @@ export function buildClaudeSubprocessEnv(
         ...envOverrides,
         // Propagate debug mode from argv flag OR existing env var
         CRAFT_DEBUG: (process.argv.includes('--debug') || process.env.CRAFT_DEBUG === '1') ? '1' : '0',
+        // Explicitly propagate CONFIG_DIR so SDK subprocesses (interceptor, MCP server)
+        // use the same config directory. esbuild --define may inline the value in the
+        // main process, removing it from process.env — this ensures it reaches children.
+        CRAFT_CONFIG_DIR: CONFIG_DIR,
     };
 
     // Bedrock must never be routed through the Claude SDK path.

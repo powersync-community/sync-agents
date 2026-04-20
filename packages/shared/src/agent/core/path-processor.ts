@@ -13,6 +13,7 @@
 
 import { homedir } from 'os';
 import { resolve, isAbsolute, normalize as normalizePosix, basename, dirname } from 'path';
+import { CONFIG_DIR } from '../../config/paths.ts';
 import {
   expandPath,
   normalizePath,
@@ -26,24 +27,47 @@ import type { PathProcessorConfig } from './types.ts';
 export { expandPath, normalizePath, pathStartsWith, toPortablePath };
 
 /**
- * Known configuration file patterns that may need validation before writing.
- * These files have specific formats (JSON, TOML, YAML) that can break apps if malformed.
+ * Escape a string for use in a regular expression.
  */
-const CONFIG_FILE_PATTERNS = [
-  // Craft Agent configs
-  /\.craft-agent\/.*\/(config|permissions|theme|guide|labels|statuses)\.json$/,
-  /\.craft-agent\/config\.json$/,
-  /\.craft-agent\/preferences\.json$/,
-  /\.craft-agent\/.*\/SKILL\.md$/,
-  // Common config files
-  /package\.json$/,
-  /tsconfig\.json$/,
-  /\.eslintrc(\.json)?$/,
-  /\.prettierrc(\.json)?$/,
-  /pyproject\.toml$/,
-  /Cargo\.toml$/,
-  /\.env(\..+)?$/,
-];
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Known configuration file patterns that may need validation before writing.
+ * Built lazily from CONFIG_DIR so tests can override CRAFT_CONFIG_DIR before first access.
+ */
+let _configFilePatterns: RegExp[] | null = null;
+
+function getConfigFilePatterns(): RegExp[] {
+  if (!_configFilePatterns) {
+    const normalizedConfigDir = process.platform === 'win32'
+      ? CONFIG_DIR.replace(/\\/g, '/').toLowerCase()
+      : CONFIG_DIR.replace(/\\/g, '/');
+    const escaped = escapeRegExp(normalizedConfigDir);
+    _configFilePatterns = [
+      // Craft Agent configs
+      new RegExp(`${escaped}/.*/(config|permissions|theme|guide|labels|statuses)\\.json$`),
+      new RegExp(`${escaped}/config\\.json$`),
+      new RegExp(`${escaped}/preferences\\.json$`),
+      new RegExp(`${escaped}/.*/SKILL\\.md$`),
+      // Common config files
+      /package\.json$/,
+      /tsconfig\.json$/,
+      /\.eslintrc(\.json)?$/,
+      /\.prettierrc(\.json)?$/,
+      /pyproject\.toml$/,
+      /Cargo\.toml$/,
+      /\.env(\..+)?$/,
+    ];
+  }
+  return _configFilePatterns;
+}
+
+/** Reset cached patterns (for testing with different CRAFT_CONFIG_DIR values). */
+export function resetConfigFilePatterns(): void {
+  _configFilePatterns = null;
+}
 
 /**
  * PathProcessor provides path utilities for agent tool processing.
@@ -155,14 +179,14 @@ export class PathProcessor {
    */
   isConfigFile(filePath: string): boolean {
     const normalized = this.normalizeForComparison(this.expandPath(filePath));
-    return CONFIG_FILE_PATTERNS.some((pattern) => pattern.test(normalized));
+    return getConfigFilePatterns().some((pattern) => pattern.test(normalized));
   }
 
   /**
    * Get the list of config file patterns (for debugging/logging).
    */
   getConfigPatterns(): RegExp[] {
-    return [...CONFIG_FILE_PATTERNS];
+    return [...getConfigFilePatterns()];
   }
 
   /**

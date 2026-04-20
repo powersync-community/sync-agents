@@ -12,6 +12,7 @@
  */
 
 import type { ConfigValidationResult, ConfigFileType, ConfigValidatorConfig } from './types.ts';
+import { CONFIG_DIR } from '../../config/paths.ts';
 
 /**
  * Patterns for detecting known config file types.
@@ -27,27 +28,51 @@ const CONFIG_FILE_PATTERNS: { pattern: RegExp; type: ConfigFileType }[] = [
 ];
 
 /**
- * Craft Agent specific config files that have known schemas.
+ * Escape a string for use in a regular expression.
  */
-const CRAFT_AGENT_CONFIG_PATTERNS = [
-  // Main config
-  /\.craft-agent\/config\.json$/,
-  // Preferences
-  /\.craft-agent\/preferences\.json$/,
-  // Source configs
-  /\.craft-agent\/workspaces\/[^/]+\/sources\/[^/]+\/config\.json$/,
-  // Permissions
-  /\.craft-agent\/workspaces\/[^/]+\/permissions\.json$/,
-  /\.craft-agent\/permissions\/[^/]+\.json$/,
-  // Theme
-  /\.craft-agent\/workspaces\/[^/]+\/theme\.json$/,
-  // Statuses
-  /\.craft-agent\/workspaces\/[^/]+\/statuses\/config\.json$/,
-  // Labels
-  /\.craft-agent\/workspaces\/[^/]+\/labels\.json$/,
-  // Tool icons
-  /\.craft-agent\/tool-icons\/tool-icons\.json$/,
-];
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Craft Agent specific config files that have known schemas.
+ * Built lazily from CONFIG_DIR so tests can override CRAFT_CONFIG_DIR before first access.
+ */
+let _craftAgentConfigPatterns: RegExp[] | null = null;
+
+function getCraftAgentConfigPatterns(): RegExp[] {
+  if (!_craftAgentConfigPatterns) {
+    const normalizedConfigDir = process.platform === 'win32'
+      ? CONFIG_DIR.replace(/\\/g, '/').toLowerCase()
+      : CONFIG_DIR.replace(/\\/g, '/');
+    const escaped = escapeRegExp(normalizedConfigDir);
+    _craftAgentConfigPatterns = [
+      // Main config
+      new RegExp(`${escaped}/config\\.json$`),
+      // Preferences
+      new RegExp(`${escaped}/preferences\\.json$`),
+      // Source configs
+      new RegExp(`${escaped}/workspaces/[^/]+/sources/[^/]+/config\\.json$`),
+      // Permissions
+      new RegExp(`${escaped}/workspaces/[^/]+/permissions\\.json$`),
+      new RegExp(`${escaped}/permissions/[^/]+\\.json$`),
+      // Theme
+      new RegExp(`${escaped}/workspaces/[^/]+/theme\\.json$`),
+      // Statuses
+      new RegExp(`${escaped}/workspaces/[^/]+/statuses/config\\.json$`),
+      // Labels
+      new RegExp(`${escaped}/workspaces/[^/]+/labels\\.json$`),
+      // Tool icons
+      new RegExp(`${escaped}/tool-icons/tool-icons\\.json$`),
+    ];
+  }
+  return _craftAgentConfigPatterns;
+}
+
+/** Reset cached patterns (for testing with different CRAFT_CONFIG_DIR values). */
+export function resetCraftAgentConfigPatterns(): void {
+  _craftAgentConfigPatterns = null;
+}
 
 /**
  * ConfigValidator provides pre-write validation for config files.
@@ -107,7 +132,7 @@ export class ConfigValidator {
     const normalizedPath = process.platform === 'win32'
       ? filePath.replace(/\\/g, '/').toLowerCase()
       : filePath.replace(/\\/g, '/');
-    return CRAFT_AGENT_CONFIG_PATTERNS.some((pattern) => pattern.test(normalizedPath));
+    return getCraftAgentConfigPatterns().some((pattern) => pattern.test(normalizedPath));
   }
 
   // ============================================================

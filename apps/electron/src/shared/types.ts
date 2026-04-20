@@ -695,6 +695,7 @@ export const IPC_CHANNELS = {
   // System
   GET_VERSIONS: 'system:versions',
   GET_HOME_DIR: 'system:homeDir',
+  GET_CONFIG_DIR: 'system:configDir',
   IS_DEBUG_MODE: 'system:isDebugMode',
 
   // Auto-update
@@ -809,7 +810,7 @@ export const IPC_CHANNELS = {
   SOURCES_GET_PERMISSIONS: 'sources:getPermissions',
   // Workspace permissions config (for Explore mode)
   WORKSPACE_GET_PERMISSIONS: 'workspace:getPermissions',
-  // Default permissions from ~/.craft-agent/permissions/default.json
+  // Default permissions from {CONFIG_DIR}/permissions/default.json
   DEFAULT_PERMISSIONS_GET: 'permissions:getDefaults',
   // Broadcast when default permissions change (file watcher)
   DEFAULT_PERMISSIONS_CHANGED: 'permissions:defaultsChanged',
@@ -1124,6 +1125,7 @@ export interface ElectronAPI {
   // System
   getVersions(): { node: string; chrome: string; electron: string }
   getHomeDir(): Promise<string>
+  getConfigDir(): Promise<string>
   isDebugMode(): Promise<boolean>
 
   // Transport connection status (preload-local, not RPC channels)

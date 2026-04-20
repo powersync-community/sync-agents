@@ -156,7 +156,10 @@ export interface SessionToolContext {
   /** Unique session identifier */
   sessionId: string;
 
-  /** Absolute path to workspace folder (~/.craft-agent/workspaces/{id}) */
+  /** Absolute path to the config directory (e.g. ~/.craft-agent or ~/.craft-agent-dev) */
+  configDir: string;
+
+  /** Absolute path to workspace folder ({configDir}/workspaces/{id}) */
   workspacePath: string;
 
   /** Path to sources folder within workspace */
@@ -293,7 +296,7 @@ export interface SessionToolContext {
 
   /**
    * Submit developer feedback. Injected by each backend:
-   * - Claude: writes JSON files to ~/.craft-agent/feedback/
+   * - Claude: writes JSON files to {CONFIG_DIR}/feedback/
    * - Codex/Pi: could send over IPC or write directly
    */
   submitFeedback?(feedback: import('./types.ts').DeveloperFeedback): void;

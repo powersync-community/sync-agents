@@ -16,6 +16,7 @@ import { homedir } from 'os';
 import { existsSync, realpathSync } from 'fs';
 import { debug } from '../utils/debug.ts';
 import { dirname, isAbsolute, relative, resolve } from 'path';
+import { CONFIG_DIR } from '../config/paths.ts';
 import { getSessionSafeAllowedToolNames } from '@craft-agent/session-tools-core';
 import { FEATURE_FLAGS } from '../feature-flags.ts';
 import { isBrowserToolNameOrAlias } from './browser-tool-names.ts';
@@ -1700,13 +1701,16 @@ export function getPathHint(targetPath: string, plansFolderPath: string, dataFol
     return `Hint: Wrong session ID. Current session is "${originalSessionMatch?.[1] ?? plansSessionMatch[1]}".`;
   }
 
+  // Normalize CONFIG_DIR to forward slashes for comparison
+  const normalizedConfigRoot = CONFIG_DIR.replace(/\\/g, '/').toLowerCase();
+
   // Case: Writing to workspace root instead of session
-  if (normalizedTarget.includes('/.craft-agent/workspaces/') && !normalizedTarget.includes('/sessions/')) {
+  if (normalizedTarget.startsWith(normalizedConfigRoot + '/workspaces/') && !normalizedTarget.includes('/sessions/')) {
     return 'Hint: Write to the session plans or data folder, not the workspace root.';
   }
 
-  // Case: Writing outside .craft-agent entirely
-  if (!normalizedTarget.includes('/.craft-agent/')) {
+  // Case: Writing outside config dir entirely
+  if (!normalizedTarget.startsWith(normalizedConfigRoot + '/')) {
     return 'Hint: Files must be written to the session plans or data folder. Use plansFolderPath or dataFolderPath from <session_state>.';
   }
 

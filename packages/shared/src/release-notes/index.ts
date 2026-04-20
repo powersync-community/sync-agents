@@ -1,19 +1,17 @@
 /**
  * Release Notes Utilities
  *
- * Loads release notes from bundled assets and syncs them to ~/.craft-agent/release-notes/.
+ * Loads release notes from bundled assets and syncs them to {CONFIG_DIR}/release-notes/.
  * Follows the same pattern as docs/index.ts.
  *
  * Source content lives in apps/electron/resources/release-notes/*.md.
  */
 
 import { join } from 'path';
-import { homedir } from 'os';
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'fs';
 import { getBundledAssetsDir } from '../utils/paths.ts';
 import { debug } from '../utils/debug.ts';
-
-const CONFIG_DIR = join(homedir(), '.craft-agent');
+import { CONFIG_DIR } from '../config/paths.ts';
 const RELEASE_NOTES_DIR = join(CONFIG_DIR, 'release-notes');
 
 let releaseNotesInitialized = false;

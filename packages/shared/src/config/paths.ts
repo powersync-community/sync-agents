@@ -12,8 +12,23 @@
  */
 
 import { homedir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
+
+/**
+ * Expand leading ~ to the user's home directory.
+ * Node.js does not expand ~ in environment variables (unlike shell).
+ */
+function expandTilde(p: string): string {
+  if (p === '~') return homedir();
+  if (p.startsWith('~/') || p.startsWith('~\\')) return join(homedir(), p.slice(2));
+  return p;
+}
 
 // Allow override via environment variable for multi-instance dev
 // Falls back to default ~/.craft-agent/ for production and non-numbered dev folders
-export const CONFIG_DIR = process.env.CRAFT_CONFIG_DIR || join(homedir(), '.craft-agent');
+// resolve() ensures the result is always an absolute path.
+export const CONFIG_DIR = resolve(
+  process.env.CRAFT_CONFIG_DIR
+    ? expandTilde(process.env.CRAFT_CONFIG_DIR)
+    : join(homedir(), '.craft-agent')
+);

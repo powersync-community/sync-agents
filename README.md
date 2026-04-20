@@ -533,10 +533,10 @@ Craft Agents uses two agent backends:
 
 ## Configuration
 
-Configuration is stored at `~/.craft-agent/`:
+Configuration is stored at `{CONFIG_DIR}/` (defaults to `~/.craft-agent/`):
 
 ```
-~/.craft-agent/
+{CONFIG_DIR}/
 ├── config.json              # Main config (workspaces, LLM connections)
 ├── credentials.enc          # Encrypted credentials (AES-256-GCM)
 ├── preferences.json         # User preferences
@@ -564,7 +564,7 @@ Automations let you automate workflows by triggering actions when events happen 
 - "Track permission mode changes and summarise them"
 - "Every Friday at 5pm, summarise this week's completed tasks"
 
-Or configure manually in `~/.craft-agent/workspaces/{id}/automations.json`:
+Or configure manually in `{CONFIG_DIR}/workspaces/{id}/automations.json`:
 
 ```json
 {

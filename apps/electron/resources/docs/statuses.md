@@ -4,8 +4,8 @@ Session statuses represent workflow states. Each workspace has its own status co
 
 ## Storage Locations
 
-- Config: `~/.craft-agent/workspaces/{id}/statuses/config.json`
-- Icons: `~/.craft-agent/workspaces/{id}/statuses/icons/`
+- Config: `{CONFIG_DIR}/workspaces/{id}/statuses/config.json`
+- Icons: `{CONFIG_DIR}/workspaces/{id}/statuses/icons/`
 
 ## Default Statuses
 

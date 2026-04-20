@@ -25,17 +25,17 @@ export function AddWorkspaceStep_CreateTeam({
   submitError = null,
 }: AddWorkspaceStep_CreateTeamProps) {
   const [name, setName] = useState('')
-  const [homeDir, setHomeDir] = useState('')
+  const [configDir, setConfigDir] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isValidating, setIsValidating] = useState(false)
   const [cloudError, setCloudError] = useState<string | null>(null)
 
   useEffect(() => {
-    window.electronAPI.getHomeDir().then(setHomeDir)
+    window.electronAPI.getConfigDir().then(setConfigDir)
   }, [])
 
   const slug = slugify(name)
-  const defaultBasePath = homeDir ? `${homeDir}/.craft-agent/workspaces` : null
+  const defaultBasePath = configDir ? `${configDir}/workspaces` : null
   const finalPath = defaultBasePath && slug ? `${defaultBasePath}/${slug}` : null
 
   // Validate slug uniqueness

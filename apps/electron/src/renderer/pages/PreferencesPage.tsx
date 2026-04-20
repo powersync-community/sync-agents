@@ -1,7 +1,7 @@
 /**
  * PreferencesPage
  *
- * Form-based editor for stored user preferences (~/.craft-agent/preferences.json).
+ * Form-based editor for stored user preferences ({CONFIG_DIR}/preferences.json).
  * Features:
  * - Fixed input fields for known preferences (name, timezone, location, language)
  * - Free-form textarea for notes
@@ -120,6 +120,12 @@ export default function PreferencesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [configDir, setConfigDir] = useState('')
+
+  // Get config directory on mount
+  useEffect(() => {
+    window.electronAPI.getConfigDir().then(setConfigDir)
+  }, [])
 
   // Deep compare for dirty state
   const isDirty = JSON.stringify(formState) !== JSON.stringify(originalState)
@@ -185,7 +191,7 @@ export default function PreferencesPage() {
   const headerActions = (
     <div className="flex items-center gap-1.5">
       <button
-        onClick={() => window.electronAPI.showInFolder('~/.craft-agent/preferences.json')}
+        onClick={() => configDir && window.electronAPI.showInFolder(`${configDir}/preferences.json`)}
         className="flex items-center gap-1 text-xs h-7 px-2 rounded-md bg-foreground/5 hover:bg-foreground/10 text-muted-foreground"
         title={`Show in ${getFileManagerName()}`}
       >

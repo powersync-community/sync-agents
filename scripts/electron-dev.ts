@@ -101,6 +101,12 @@ function loadEnvFile(): void {
               (value.startsWith("'") && value.endsWith("'"))) {
             value = value.slice(1, -1);
           }
+          // Expand leading ~ to home directory (shell does this, but Node doesn't)
+          if (value.startsWith('~/')) {
+            value = join(homedir(), value.slice(2));
+          } else if (value === '~') {
+            value = homedir();
+          }
           process.env[key] = value;
         }
       }

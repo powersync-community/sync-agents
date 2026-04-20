@@ -100,7 +100,7 @@ export {
   loadRawSourcePermissions,
   saveWorkspacePermissions,
   saveSourcePermissions,
-  // App-level default permissions (at ~/.craft-agent/permissions/)
+  // App-level default permissions (at {CONFIG_DIR}/permissions/)
   getAppPermissionsDir,
   ensureDefaultPermissions,
   loadDefaultPermissions,

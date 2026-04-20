@@ -68,7 +68,7 @@ printAnnotation('  7. Debug Mode Context (if enabled) - formatDebugModeContext()
 const systemPrompt = getSystemPrompt(
   undefined, // No pinned preferences (use current from disk)
   { enabled: false }, // Debug mode disabled for cleaner output
-  '/Users/example/.craft-agent/workspaces/abc123' // Example workspace path
+  '/Users/example/.craft-agent/workspaces/abc123' // Example workspace path (intentionally static for dev/debug)
 );
 
 printSection('FULL STATIC SYSTEM PROMPT', systemPrompt, colors.green);

@@ -48,7 +48,7 @@ export async function handleMermaidValidate(
         text: JSON.stringify({
           valid: false,
           error: errorMessage,
-          suggestion: 'Check the syntax against ~/.craft-agent/docs/mermaid.md',
+          suggestion: 'Check the syntax against the Mermaid documentation (docs/mermaid.md in the config directory)',
         }, null, 2),
       }],
       isError: true,

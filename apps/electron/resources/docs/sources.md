@@ -241,7 +241,7 @@ Would you like me to show you what issues are currently open?
 ## Overview
 
 Sources are stored as folders under:
-- `~/.craft-agent/workspaces/{workspaceId}/sources/{sourceSlug}/`
+- `{CONFIG_DIR}/workspaces/{workspaceId}/sources/{sourceSlug}/`
 
 Each source folder contains:
 - `config.json` - Source configuration (required)
@@ -680,7 +680,7 @@ The `config.icon` field controls the source icon. Resolution follows this priori
 ## Provider Domain Cache
 
 For favicon resolution, a cache maps provider names to their canonical domains at:
-`~/.craft-agent/provider-domains.json`
+`{CONFIG_DIR}/provider-domains.json`
 
 **Format:**
 ```json
@@ -749,7 +749,7 @@ Technical steps:
 
 1. Create the source folder:
    ```bash
-   mkdir -p ~/.craft-agent/workspaces/{ws}/sources/my-source
+   mkdir -p {CONFIG_DIR}/workspaces/{ws}/sources/my-source
    ```
 
 2. Write `config.json` with appropriate settings (see schemas above)

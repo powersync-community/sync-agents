@@ -1,5 +1,6 @@
 import { basename, join } from 'path'
 import { mkdir } from 'fs/promises'
+import { CONFIG_DIR } from '@craft-agent/shared/config/paths'
 
 export interface CloudWorkspaceStoragePaths {
   baseDir: string
@@ -10,7 +11,8 @@ export interface CloudWorkspaceStoragePaths {
 
 export function getCloudWorkspaceStoragePaths(workspaceRootPath: string): CloudWorkspaceStoragePaths {
   const rootName = basename(workspaceRootPath)
-  const powerSyncDir = rootName === '.craft-agent'
+  const configDirName = basename(CONFIG_DIR)
+  const powerSyncDir = rootName === configDirName
     ? join(workspaceRootPath, 'powersync')
     : join(workspaceRootPath, '.craft-agent', 'powersync')
   return {
