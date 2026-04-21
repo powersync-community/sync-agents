@@ -26,6 +26,11 @@ const IS_WINDOWS = process.platform === "win32";
 const BIN_EXT = IS_WINDOWS ? ".exe" : "";
 const VITE_BIN = join(ROOT_DIR, `node_modules/.bin/vite${BIN_EXT}`);
 const ELECTRON_BIN = join(ROOT_DIR, `node_modules/.bin/electron${BIN_EXT}`);
+const ELECTRON_REBUILD_BIN = join(ROOT_DIR, `node_modules/.bin/electron-rebuild${BIN_EXT}`);
+
+// Native Node modules that must be rebuilt against Electron's ABI or the main
+// process will fail to load them with ERR_DLOPEN_FAILED.
+const NATIVE_MODULES_FOR_ELECTRON = ["better-sqlite3"];
 
 function resolveBuildPlatform(): Platform {
   if (process.platform === "darwin") return "darwin";
@@ -38,6 +43,50 @@ function resolveBuildArch(): Arch {
   if (process.arch === "arm64") return "arm64";
   if (process.arch === "x64") return "x64";
   throw new Error(`Unsupported architecture for uv bootstrap: ${process.arch}`);
+}
+
+// Verifies every native module listed in NATIVE_MODULES_FOR_ELECTRON loads in
+// electron-as-node. On ERR_DLOPEN_FAILED / NODE_MODULE_VERSION mismatch, runs
+// @electron/rebuild to compile them against Electron's current ABI. Without
+// this, better-sqlite3 (and therefore PowerSync) fails silently on first use.
+async function ensureNativeModulesForElectron(): Promise<void> {
+  const probe = NATIVE_MODULES_FOR_ELECTRON
+    .map((m) => `require(${JSON.stringify(m)});`)
+    .join(" ");
+
+  const check = spawn({
+    cmd: [ELECTRON_BIN, "-e", probe],
+    cwd: ROOT_DIR,
+    env: { ...(process.env as Record<string, string>), ELECTRON_RUN_AS_NODE: "1" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stderr = await new Response(check.stderr).text();
+  const exitCode = await check.exited;
+  if (exitCode === 0) return;
+
+  const mismatch = /NODE_MODULE_VERSION|ERR_DLOPEN_FAILED|was compiled against/.test(stderr);
+  if (!mismatch) {
+    console.error("❌ Native module probe failed for an unexpected reason:");
+    console.error(stderr);
+    process.exit(1);
+  }
+
+  console.log(`🔧 Native modules need rebuild for Electron: ${NATIVE_MODULES_FOR_ELECTRON.join(", ")}`);
+  const rebuildArgs = ["-f", ...NATIVE_MODULES_FOR_ELECTRON.flatMap((m) => ["-w", m])];
+  const rebuild = spawn({
+    cmd: [ELECTRON_REBUILD_BIN, ...rebuildArgs],
+    cwd: ROOT_DIR,
+    stdin: "ignore",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const rebuildExit = await rebuild.exited;
+  if (rebuildExit !== 0) {
+    console.error("❌ electron-rebuild failed");
+    process.exit(1);
+  }
+  console.log("✅ Native modules rebuilt for Electron\n");
 }
 
 async function ensureBundledUvForCurrentPlatform(): Promise<void> {
@@ -107,7 +156,10 @@ function loadEnvFile(): void {
           } else if (value === '~') {
             value = homedir();
           }
-          process.env[key] = value;
+          // Shell env wins over .env (standard dotenv precedence).
+          if (process.env[key] === undefined) {
+            process.env[key] = value;
+          }
         }
       }
     }
@@ -382,6 +434,7 @@ async function main(): Promise<void> {
   }
 
   await ensureBundledUvForCurrentPlatform();
+  await ensureNativeModulesForElectron();
 
   copyResources();
 

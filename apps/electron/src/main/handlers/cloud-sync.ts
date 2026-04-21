@@ -160,10 +160,17 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
   })
 
   server.handle(RPC_CHANNELS.cloudSync.SIGN_OUT, async () => {
+    console.log('[CloudSync] SIGN_OUT handler called')
     if (!cloudExperimentalEnabled) return { success: false, error: 'Cloud sync is not enabled' }
 
-    await powerSyncService.disconnectAndClear()
-    return supabaseAuthService.signOut()
+    try {
+      await powerSyncService.disconnectAndClear()
+    } catch (err) {
+      console.error('[CloudSync] SIGN_OUT: PowerSync cleanup failed (continuing to sign out):', err)
+    }
+    const result = await supabaseAuthService.signOut()
+    console.log('[CloudSync] SIGN_OUT: result', result)
+    return result
   })
 
   server.handle(RPC_CHANNELS.cloudSync.GET_USER, async () => {

@@ -4,11 +4,18 @@
 -- Credentials: dev@syncagents.local / devpass123
 
 -- 1. Test user in auth.users
+-- NOTE: GoTrue's Go SQL scanner reads string columns as non-nullable — any NULL
+-- in email_change / recovery_token / *_token_* columns crashes sign-in with
+-- "Database error querying schema". All string columns must be '' explicitly.
 INSERT INTO auth.users (
   id, instance_id, email, encrypted_password,
   email_confirmed_at, aud, role,
   raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at, confirmation_token
+  created_at, updated_at,
+  confirmation_token, recovery_token,
+  email_change, email_change_token_new, email_change_token_current,
+  phone_change, phone_change_token,
+  reauthentication_token
 )
 VALUES (
   '00000000-0000-0000-0000-000000000001',
@@ -18,7 +25,11 @@ VALUES (
   now(), 'authenticated', 'authenticated',
   '{"provider":"email","providers":["email"]}',
   '{}',
-  now(), now(), ''
+  now(), now(),
+  '', '',
+  '', '', '',
+  '', '',
+  ''
 )
 ON CONFLICT (id) DO NOTHING;
 
