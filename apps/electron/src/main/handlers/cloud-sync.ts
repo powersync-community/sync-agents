@@ -288,6 +288,14 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
     // Connect PowerSync for the newly linked workspace
     await connectPowerSyncForCloudWorkspace()
 
+    // Hydrate cloud sessions into SessionManager so the UI can display them
+    // after the renderer refreshes its session list.
+    try {
+      await deps.sessionManager.refreshWorkspaceCloudState(localWorkspaceId)
+    } catch (err) {
+      console.error('[CloudSync] refreshWorkspaceCloudState failed:', err)
+    }
+
     return {
       success: true,
       link: {
