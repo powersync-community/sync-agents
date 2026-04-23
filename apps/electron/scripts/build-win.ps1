@@ -72,6 +72,16 @@ Write-Host "Cleaning previous builds..."
 $foldersToClean = @(
     "$ElectronDir\vendor",
     "$ElectronDir\node_modules\@anthropic-ai",
+    "$ElectronDir\node_modules\@powersync",
+    "$ElectronDir\node_modules\async-mutex",
+    "$ElectronDir\node_modules\tslib",
+    "$ElectronDir\node_modules\bson",
+    "$ElectronDir\node_modules\undici",
+    "$ElectronDir\node_modules\comlink",
+    "$ElectronDir\node_modules\event-iterator",
+    "$ElectronDir\node_modules\better-sqlite3",
+    "$ElectronDir\node_modules\bindings",
+    "$ElectronDir\node_modules\file-uri-to-path",
     "$ElectronDir\packages",
     "$ElectronDir\release"
 )
@@ -164,6 +174,42 @@ if (-not (Test-Path $SdkSource)) {
 Write-Host "Copying SDK..."
 New-Item -ItemType Directory -Force -Path "$ElectronDir\node_modules\@anthropic-ai" | Out-Null
 Copy-Item -Recurse -Force $SdkSource "$ElectronDir\node_modules\@anthropic-ai\"
+
+# 4b. Copy PowerSync runtime deps from root node_modules.
+# These are referenced by electron-builder.yml extraResources and must live under
+# apps\electron\node_modules\ before packaging.
+Write-Host "Copying PowerSync runtime deps..."
+New-Item -ItemType Directory -Force -Path "$ElectronDir\node_modules\@powersync" | Out-Null
+foreach ($scopedPkg in @("@powersync\node", "@powersync\common")) {
+    $src = "$RootDir\node_modules\$scopedPkg"
+    if (-not (Test-Path $src)) {
+        Write-Host "ERROR: $scopedPkg not found at $src" -ForegroundColor Red
+        Write-Host "Run 'bun install' from the repository root first."
+        exit 1
+    }
+    Copy-Item -Recurse -Force $src "$ElectronDir\node_modules\@powersync\"
+}
+foreach ($pkg in @("async-mutex", "tslib", "bson", "undici", "comlink", "event-iterator", "better-sqlite3", "bindings", "file-uri-to-path")) {
+    $src = "$RootDir\node_modules\$pkg"
+    if (-not (Test-Path $src)) {
+        Write-Host "ERROR: $pkg not found at $src" -ForegroundColor Red
+        Write-Host "Run 'bun install' from the repository root first."
+        exit 1
+    }
+    Copy-Item -Recurse -Force $src "$ElectronDir\node_modules\"
+}
+
+# 4c. Rebuild better-sqlite3 for Electron's ABI (ships ABI 140 for Electron 39).
+# --module-dir targets the copy we just placed in $ElectronDir\node_modules\.
+Write-Host "Rebuilding better-sqlite3 for Electron ABI..."
+$RebuildBin = "$RootDir\node_modules\.bin\electron-rebuild.cmd"
+if (-not (Test-Path $RebuildBin)) {
+    Write-Host "ERROR: electron-rebuild not found at $RebuildBin" -ForegroundColor Red
+    Write-Host "Run 'bun install' from the repository root first."
+    exit 1
+}
+& $RebuildBin -f -w better-sqlite3 -m $ElectronDir
+if ($LASTEXITCODE -ne 0) { throw "electron-rebuild for better-sqlite3 failed" }
 
 # 5. Copy interceptor
 $InterceptorSource = "$RootDir\packages\shared\src\unified-network-interceptor.ts"

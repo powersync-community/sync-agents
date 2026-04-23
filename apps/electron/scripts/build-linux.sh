@@ -74,6 +74,10 @@ fi
 echo "Cleaning previous builds..."
 rm -rf "$ELECTRON_DIR/vendor"
 rm -rf "$ELECTRON_DIR/node_modules/@anthropic-ai"
+rm -rf "$ELECTRON_DIR/node_modules/@powersync"
+for pkg in async-mutex tslib bson undici comlink event-iterator better-sqlite3 bindings file-uri-to-path; do
+    rm -rf "$ELECTRON_DIR/node_modules/$pkg"
+done
 rm -rf "$ELECTRON_DIR/packages"
 rm -rf "$ELECTRON_DIR/release"
 
@@ -121,6 +125,27 @@ require_path "$SDK_SOURCE" "SDK" "Run 'bun install' from the repository root fir
 echo "Copying SDK..."
 mkdir -p "$ELECTRON_DIR/node_modules/@anthropic-ai"
 cp -r "$SDK_SOURCE" "$ELECTRON_DIR/node_modules/@anthropic-ai/"
+
+# 4b. Copy PowerSync runtime deps from root node_modules.
+# These are referenced by electron-builder.yml extraResources and must live under
+# apps/electron/node_modules/ before packaging.
+echo "Copying PowerSync runtime deps..."
+mkdir -p "$ELECTRON_DIR/node_modules/@powersync"
+for pkg in "@powersync/node" "@powersync/common"; do
+    src="$ROOT_DIR/node_modules/$pkg"
+    require_path "$src" "$pkg" "Run 'bun install' from the repository root first."
+    cp -r "$src" "$ELECTRON_DIR/node_modules/@powersync/"
+done
+for pkg in async-mutex tslib bson undici comlink event-iterator better-sqlite3 bindings file-uri-to-path; do
+    src="$ROOT_DIR/node_modules/$pkg"
+    require_path "$src" "$pkg" "Run 'bun install' from the repository root first."
+    cp -r "$src" "$ELECTRON_DIR/node_modules/"
+done
+
+# 4c. Rebuild better-sqlite3 for Electron's ABI (ships ABI 140 for Electron 39).
+# --module-dir targets the copy we just placed in $ELECTRON_DIR/node_modules/.
+echo "Rebuilding better-sqlite3 for Electron ABI..."
+"$ROOT_DIR/node_modules/.bin/electron-rebuild" -f -w better-sqlite3 -m "$ELECTRON_DIR"
 
 # 5. Copy interceptor
 INTERCEPTOR_SOURCE="$ROOT_DIR/packages/shared/src/unified-network-interceptor.ts"

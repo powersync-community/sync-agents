@@ -106,6 +106,40 @@ mac:
         - "!vendor/ripgrep/arm64-linux/**"
         - "!vendor/ripgrep/x64-linux/**"
         - "!vendor/ripgrep/x64-win32/**"
+    # PowerSync runtime deps (cloud sync). Native binaries are filtered per platform.
+    - from: node_modules/@powersync/node
+      to: app/node_modules/@powersync/node
+      filter:
+        - "**/*"
+        - "!lib/libpowersync_*.linux.so"
+        - "!lib/powersync_*.dll"
+    - from: node_modules/@powersync/common
+      to: app/node_modules/@powersync/common
+    - from: node_modules/async-mutex
+      to: app/node_modules/async-mutex
+    - from: node_modules/tslib
+      to: app/node_modules/tslib
+    - from: node_modules/bson
+      to: app/node_modules/bson
+    - from: node_modules/undici
+      to: app/node_modules/undici
+    - from: node_modules/comlink
+      to: app/node_modules/comlink
+    - from: node_modules/event-iterator
+      to: app/node_modules/event-iterator
+    # better-sqlite3 is rebuilt against Electron's ABI by the build script before packaging.
+    # Exclude source/deps — only the prebuilt .node and lib/ JS are needed at runtime.
+    - from: node_modules/better-sqlite3
+      to: app/node_modules/better-sqlite3
+      filter:
+        - "**/*"
+        - "!deps/**"
+        - "!src/**"
+        - "!binding.gyp"
+    - from: node_modules/bindings
+      to: app/node_modules/bindings
+    - from: node_modules/file-uri-to-path
+      to: app/node_modules/file-uri-to-path
   # Exclude binaries for other platforms
   files:
     - "!**/vendor/codex/linux-*/**"
@@ -176,6 +210,38 @@ win:
         - "!vendor/ripgrep/x64-darwin/**"
         - "!vendor/ripgrep/arm64-linux/**"
         - "!vendor/ripgrep/x64-linux/**"
+    # PowerSync runtime deps (cloud sync). Native binaries are filtered per platform.
+    - from: node_modules/@powersync/node
+      to: app/node_modules/@powersync/node
+      filter:
+        - "**/*"
+        - "!lib/libpowersync_*.macos.dylib"
+        - "!lib/libpowersync_*.linux.so"
+    - from: node_modules/@powersync/common
+      to: app/node_modules/@powersync/common
+    - from: node_modules/async-mutex
+      to: app/node_modules/async-mutex
+    - from: node_modules/tslib
+      to: app/node_modules/tslib
+    - from: node_modules/bson
+      to: app/node_modules/bson
+    - from: node_modules/undici
+      to: app/node_modules/undici
+    - from: node_modules/comlink
+      to: app/node_modules/comlink
+    - from: node_modules/event-iterator
+      to: app/node_modules/event-iterator
+    - from: node_modules/better-sqlite3
+      to: app/node_modules/better-sqlite3
+      filter:
+        - "**/*"
+        - "!deps/**"
+        - "!src/**"
+        - "!binding.gyp"
+    - from: node_modules/bindings
+      to: app/node_modules/bindings
+    - from: node_modules/file-uri-to-path
+      to: app/node_modules/file-uri-to-path
     - from: vendor/bun/bun.exe
       to: vendor/bun/bun.exe
     - from: vendor/codex/win32-x64
@@ -209,6 +275,42 @@ linux:
         - "!vendor/ripgrep/arm64-darwin/**"
         - "!vendor/ripgrep/x64-darwin/**"
         - "!vendor/ripgrep/x64-win32/**"
+    # PowerSync runtime deps (cloud sync). Native binaries are filtered per platform.
+    - from: node_modules/@powersync/node
+      to: app/node_modules/@powersync/node
+      filter:
+        - "**/*"
+        - "!lib/libpowersync_*.macos.dylib"
+        - "!lib/powersync_*.dll"
+        - "!lib/libpowersync_aarch64.linux.so"
+        - "!lib/libpowersync_armv7.linux.so"
+        - "!lib/libpowersync_riscv64gc.linux.so"
+        - "!lib/libpowersync_x86.linux.so"
+    - from: node_modules/@powersync/common
+      to: app/node_modules/@powersync/common
+    - from: node_modules/async-mutex
+      to: app/node_modules/async-mutex
+    - from: node_modules/tslib
+      to: app/node_modules/tslib
+    - from: node_modules/bson
+      to: app/node_modules/bson
+    - from: node_modules/undici
+      to: app/node_modules/undici
+    - from: node_modules/comlink
+      to: app/node_modules/comlink
+    - from: node_modules/event-iterator
+      to: app/node_modules/event-iterator
+    - from: node_modules/better-sqlite3
+      to: app/node_modules/better-sqlite3
+      filter:
+        - "**/*"
+        - "!deps/**"
+        - "!src/**"
+        - "!binding.gyp"
+    - from: node_modules/bindings
+      to: app/node_modules/bindings
+    - from: node_modules/file-uri-to-path
+      to: app/node_modules/file-uri-to-path
   # Exclude binaries for other platforms
   files:
     - "!**/vendor/codex/darwin-*/**"
