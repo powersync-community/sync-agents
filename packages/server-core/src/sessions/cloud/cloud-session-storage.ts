@@ -25,6 +25,21 @@ const DEFAULT_TOKEN_USAGE: SessionTokenUsage = {
   costUsd: 0,
 }
 
+// Parse a jsonb-sourced text column. Existing rows uploaded before the
+// connector's jsonb-object fix were stored as jsonb string primitives and sync
+// down double-encoded (`"{\"id\":...}"`) — unwrap that extra layer so old data
+// still renders.
+function parseJsonbText<T = any>(raw: unknown, fallback: T): T {
+  if (raw == null) return fallback
+  if (typeof raw !== 'string') return raw as T
+  try {
+    const first = JSON.parse(raw)
+    return typeof first === 'string' ? JSON.parse(first) : first
+  } catch {
+    return fallback
+  }
+}
+
 /**
  * Synced metadata fields stored in the `metadata` jsonb column of `chat_sessions`.
  * These are session properties visible to all teammates.
@@ -257,7 +272,7 @@ export class CloudSessionStorage {
     // Apply synced updates via PowerSync
     if (directUpdates.length > 0 || Object.keys(metadataUpdates).length > 0) {
       const current = await this.db.getOptional<{ metadata: string }>('SELECT metadata FROM chat_sessions WHERE id = ?', [sessionId])
-      const metadata = { ...JSON.parse(current?.metadata || '{}'), ...metadataUpdates }
+      const metadata = { ...parseJsonbText<Record<string, any>>(current?.metadata, {}), ...metadataUpdates }
       const setClauses = [...directUpdates, 'metadata = ?', 'updated_at = ?']
       const values = [...directValues, JSON.stringify(metadata), new Date().toISOString(), sessionId]
       await this.db.execute(`UPDATE chat_sessions SET ${setClauses.join(', ')} WHERE id = ?`, values)
@@ -288,7 +303,7 @@ export class CloudSessionStorage {
   // --- Private helpers ---
 
   private rowToSessionMetadata(row: any): SessionMetadata {
-    const metadata: SyncedSessionMetadata = JSON.parse(row.metadata || '{}')
+    const metadata: SyncedSessionMetadata = parseJsonbText(row.metadata, {})
     const localState = loadLocalState(this.workspaceRootPath, row.id)
 
     return {
@@ -327,13 +342,11 @@ export class CloudSessionStorage {
   }
 
   private assembleStoredSession(row: any, messageRows: any[], localState: SessionLocalState): StoredSession {
-    const metadata: SyncedSessionMetadata = JSON.parse(row.metadata || '{}')
+    const metadata: SyncedSessionMetadata = parseJsonbText(row.metadata, {})
     const messages: StoredMessage[] = messageRows.map(r => {
-      try {
-        return JSON.parse(r.content)
-      } catch {
-        return { id: r.id, role: r.role, content: '', timestamp: new Date(r.created_at).getTime() }
-      }
+      const parsed = parseJsonbText<StoredMessage | null>(r.content, null)
+      if (parsed && typeof parsed === 'object') return parsed
+      return { id: r.id, type: r.role, content: '', timestamp: new Date(r.created_at).getTime() } as StoredMessage
     })
 
     return {

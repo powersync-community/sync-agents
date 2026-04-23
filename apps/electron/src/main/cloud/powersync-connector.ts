@@ -1,6 +1,28 @@
 import type { AbstractPowerSyncDatabase, PowerSyncBackendConnector, PowerSyncCredentials } from '@powersync/common'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+// Columns stored as TEXT in the PowerSync schema but JSONB on Supabase.
+// We JSON.stringify on write so SQLite has a scalar value, then parse back to
+// an object here before upload — otherwise Postgres stores the string as a
+// jsonb string primitive and replication round-trips a double-encoded value.
+const JSONB_COLUMNS: Record<string, readonly string[]> = {
+  chat_sessions: ['metadata'],
+  chat_messages: ['content'],
+}
+
+function parseJsonbColumns(table: string, data: Record<string, unknown>): Record<string, unknown> {
+  const cols = JSONB_COLUMNS[table]
+  if (!cols) return data
+  const out = { ...data }
+  for (const col of cols) {
+    const v = out[col]
+    if (typeof v === 'string') {
+      try { out[col] = JSON.parse(v) } catch { /* leave raw */ }
+    }
+  }
+  return out
+}
+
 export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
   constructor(
     private supabaseClient: SupabaseClient,
@@ -39,7 +61,8 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
       for (const op of transaction.crud) {
         const table = op.table
         const id = op.id
-        const payload = { id, ...(op.opData ?? {}) } as Record<string, unknown>
+        const opData = parseJsonbColumns(table, op.opData ?? {})
+        const payload = { id, ...opData } as Record<string, unknown>
         let result
 
         switch (op.op) {
@@ -59,7 +82,7 @@ export class SupabasePowerSyncConnector implements PowerSyncBackendConnector {
           case 'PATCH':
             result = await this.supabaseClient
               .from(table)
-              .update(op.opData!)
+              .update(opData)
               .eq('id', id)
             break
           case 'DELETE':

@@ -969,6 +969,20 @@ function resolveSupportsBranching(managed: ManagedSession): boolean {
   return true // default: branching enabled for all backends
 }
 
+// Parse a jsonb-sourced text column. Handles both single-encoded ({"a":1}) and
+// legacy double-encoded ("{\"a\":1}") values from rows uploaded before the
+// connector's jsonb fix.
+function parseJsonbText<T = any>(raw: unknown, fallback: T): T {
+  if (raw == null) return fallback
+  if (typeof raw !== 'string') return raw as T
+  try {
+    const first = JSON.parse(raw)
+    return typeof first === 'string' ? JSON.parse(first) : first
+  } catch {
+    return fallback
+  }
+}
+
 const DEFAULT_TOKEN_USAGE = {
   inputTokens: 0, outputTokens: 0, totalTokens: 0,
   contextTokens: 0, costUsd: 0,
@@ -1128,6 +1142,28 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
+   * Called when a workspace's cloud link state changes at runtime (e.g. after
+   * WORKSPACE_LINK_LOCAL). Re-reads the workspace from config, refreshes any
+   * stale in-memory workspace references on managed sessions, and initializes
+   * cloud storage so existing cloud sessions hydrate into the SessionManager.
+   * Callers should trigger a session-list refresh in the renderer afterwards.
+   */
+  async refreshWorkspaceCloudState(workspaceId: string): Promise<boolean> {
+    const workspaces = getWorkspaces()
+    const fresh = workspaces.find(w => w.id === workspaceId)
+    if (!fresh) return false
+
+    for (const managed of this.sessions.values()) {
+      if (managed.workspace.id === workspaceId) {
+        managed.workspace = fresh
+      }
+    }
+
+    if (fresh.storageMode !== 'cloud' || !fresh.cloudWorkspaceId) return false
+    return this.ensureCloudStorageForWorkspace(fresh)
+  }
+
+  /**
    * Returns the current Supabase user id, or null when unauthenticated.
    */
   private getCurrentUserId(): string | null {
@@ -1276,7 +1312,7 @@ export class SessionManager implements ISessionManager {
             const existing = this.sessions.get(row.id)
             if (existing) {
               // Update existing in-memory session with synced changes
-              const metadata = JSON.parse(row.metadata || '{}')
+              const metadata = parseJsonbText<Record<string, any>>(row.metadata, {})
               const localState = loadLocalState(workspace.rootPath, row.id)
               existing.name = row.name ?? undefined
               existing.isArchived = row.archived === 1
@@ -1295,7 +1331,7 @@ export class SessionManager implements ISessionManager {
               changed = true
             } else {
               // New session from another device — add to in-memory cache
-              const metadata = JSON.parse(row.metadata || '{}')
+              const metadata = parseJsonbText<Record<string, any>>(row.metadata, {})
               const localState = loadLocalState(workspace.rootPath, row.id)
 
               const managed: ManagedSession = {
