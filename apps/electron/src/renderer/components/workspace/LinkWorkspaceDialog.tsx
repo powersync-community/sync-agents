@@ -118,7 +118,7 @@ export function LinkWorkspaceDialog({
         <DialogHeader>
           <DialogTitle>Link workspace to cloud</DialogTitle>
           <DialogDescription>
-            Route sessions and messages through PowerSync for <span className="font-medium">{localWorkspaceName}</span>.
+            Route sessions and messages through cloud sync for <span className="font-medium">{localWorkspaceName}</span>.
           </DialogDescription>
         </DialogHeader>
 

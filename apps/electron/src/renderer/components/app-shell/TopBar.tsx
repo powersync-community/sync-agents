@@ -40,7 +40,7 @@ import type { Workspace } from "../../../shared/types"
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { getDocUrl } from "@craft-agent/shared/docs/doc-links"
 import { CloudSyncIndicator } from "./CloudSyncIndicator"
-import powersyncLogoIcon from "@/assets/powersync-logo-icon.png"
+import craftLogo from "@/assets/craft_logo_c.svg"
 
 // --- Menu rendering (moved from AppMenu) ---
 
@@ -259,7 +259,7 @@ export function TopBar({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TopBarButton aria-label="Sync Agents menu">
-              <img src={powersyncLogoIcon} alt="PowerSync" className="h-4 w-[22px] object-contain" />
+              <img src={craftLogo} alt="Craft Agent" className="h-4 w-[22px] object-contain" />
             </TopBarButton>
           </DropdownMenuTrigger>
           <StyledDropdownMenuContent align="start" minWidth="min-w-48">

@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils"
 import { Key, Monitor } from "lucide-react"
 import { StepFormLayout } from "./primitives"
-import powersyncLogoIcon from "@/assets/powersync-logo-icon.png"
+import craftLogo from "@/assets/craft_logo_c.svg"
 
 import claudeIcon from "@/assets/provider-icons/claude.svg"
 import openaiIcon from "@/assets/provider-icons/openai.svg"
@@ -71,7 +71,7 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
     <StepFormLayout
       iconElement={
         <div className="flex size-16 items-center justify-center">
-          <img src={powersyncLogoIcon} alt="PowerSync" className="size-10 object-contain" />
+          <img src={craftLogo} alt="Craft Agent" className="size-10 object-contain" />
         </div>
       }
       title="Welcome to Sync Agents"

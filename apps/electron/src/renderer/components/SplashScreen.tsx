@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import powersyncLogoIcon from '@/assets/powersync-logo-icon.png'
+import craftLogo from '@/assets/craft_logo_c.svg'
 
 interface SplashScreenProps {
   isExiting: boolean
@@ -7,7 +7,7 @@ interface SplashScreenProps {
 }
 
 /**
- * SplashScreen - Shows PowerSync logo during app initialization
+ * SplashScreen - Shows the Craft Agent logo during app initialization
  *
  * Displays centered logo on app background, fades out when app is fully ready.
  * On exit, the logo scales up and fades out quickly while the background fades slower.
@@ -36,7 +36,7 @@ export function SplashScreen({ isExiting, onExitComplete }: SplashScreenProps) {
           ease: [0.16, 1, 0.3, 1] // Exponential out curve
         }}
       >
-        <img src={powersyncLogoIcon} alt="PowerSync" className="h-10 w-10 object-contain" />
+        <img src={craftLogo} alt="Craft Agent" className="h-10 w-10 object-contain" />
       </motion.div>
     </motion.div>
   )

@@ -52,7 +52,7 @@ function getIndicatorState(status: SyncStatus | null, error: string | null): Ind
     return {
       kind: 'disconnected',
       label: 'Cloud sync disconnected',
-      description: 'No active connection to PowerSync right now.',
+      description: 'No active cloud sync connection right now.',
       icon: CloudOff,
       className: 'text-destructive',
     }

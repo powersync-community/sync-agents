@@ -1,5 +1,5 @@
 import { StepFormLayout, ContinueButton } from "./primitives"
-import powersyncLogoIcon from "@/assets/powersync-logo-icon.png"
+import craftLogo from "@/assets/craft_logo_c.svg"
 
 interface WelcomeStepProps {
   onContinue: () => void
@@ -25,7 +25,7 @@ export function WelcomeStep({
     <StepFormLayout
       iconElement={
         <div className="flex size-16 items-center justify-center">
-          <img src={powersyncLogoIcon} alt="PowerSync" className="size-10 object-contain" />
+          <img src={craftLogo} alt="Craft Agent" className="size-10 object-contain" />
         </div>
       }
       title={isExistingUser ? 'Update Settings' : 'Welcome to Sync Agents'}
