@@ -791,6 +791,15 @@ export default function App() {
         return
       }
 
+      // Cloud sync downloaded new messages from another device — refresh from server.
+      // Skip when locally streaming: the active stream is authoritative for this client.
+      if (event.type === 'messages_synced') {
+        const atomSession = store.get(sessionAtomFamily(sessionId))
+        if (atomSession?.isProcessing) return
+        void refreshSessionFromServer(sessionId)
+        return
+      }
+
       const agentEvent = event as unknown as AgentEvent
 
       // Track activity for stale session watchdog

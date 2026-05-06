@@ -1059,6 +1059,7 @@ export class SessionManager implements ISessionManager {
   private powerSyncService: PowerSyncService | null = null
   private supabaseAuthService: SupabaseAuthService | null = null
   private pendingCloudPersistWrites: Map<string, Promise<void>> = new Map()
+  private cloudMessagesWatchDispose: (() => void) | null = null
 
   /** Resolved path to @github/copilot CLI entry point (for CopilotAgent) */
   copilotCliPath: string | undefined
@@ -1126,6 +1127,7 @@ export class SessionManager implements ISessionManager {
       await this.hydrateCloudWorkspaceSessions(workspace)
       // Watch for real-time changes from other devices
       this.startCloudSessionWatcher(workspace)
+      this.startCloudMessagesWatcher(workspace)
       return true
     } catch (err) {
       sessionLog.error('Failed to initialize cloud session storage:', err)
@@ -1396,6 +1398,42 @@ export class SessionManager implements ISessionManager {
         },
       }
     )
+  }
+
+  /**
+   * Watch chat_messages for real-time updates from other devices. When messages
+   * change for a session that's already loaded into memory, re-load them from
+   * cloud storage and notify the renderer so the open chat view refreshes.
+   */
+  private startCloudMessagesWatcher(workspace: Workspace): void {
+    if (!this.cloudStorage) return
+
+    this.cloudMessagesWatchDispose?.()
+    this.cloudMessagesWatchDispose = this.cloudStorage.subscribeToMessages((changedSessionIds) => {
+      void this.handleCloudMessagesChanged(workspace, changedSessionIds)
+    })
+  }
+
+  private async handleCloudMessagesChanged(workspace: Workspace, sessionIds: Set<string>): Promise<void> {
+    for (const sessionId of sessionIds) {
+      const managed = this.sessions.get(sessionId)
+      if (!managed) continue
+      if (managed.workspace.id !== workspace.id) continue
+      if (managed.isProcessing) continue  // local stream is authoritative
+      if (!managed.messagesLoaded) continue  // will load fresh on next open
+
+      try {
+        const stored = await this.cloudStorage!.loadSession(sessionId)
+        if (!stored) continue
+        managed.messages = (stored.messages || []).map(storedToMessage)
+        managed.messageCount = managed.messages.length
+        // lastMessageAt / lastMessageRole are kept in sync by startCloudSessionWatcher
+        // when chat_sessions row updates (saveSession bumps both tables together).
+        this.sendEvent({ type: 'messages_synced', sessionId }, workspace.id)
+      } catch (err) {
+        sessionLog.error(`[PowerSync] Failed to refresh messages for session ${sessionId}:`, err)
+      }
+    }
   }
 
   /** Returns a strictly increasing timestamp (ms). When Date.now() collides with

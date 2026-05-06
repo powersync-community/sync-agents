@@ -543,6 +543,8 @@ export type SessionEvent =
   | { type: 'source_activated'; sessionId: string; sourceSlug: string; originalMessage: string }
   // Real-time usage update during processing (for context display)
   | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number } }
+  // Cloud sync downloaded new/updated messages for this session from another device
+  | { type: 'messages_synced'; sessionId: string }
 
 // Options for sendMessage
 export interface SendMessageOptions {

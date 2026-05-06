@@ -300,6 +300,47 @@ export class CloudSessionStorage {
     return true
   }
 
+  /**
+   * Subscribe to chat_messages changes for this workspace.
+   * Fires `onChange` with the set of sessionIds whose messages changed.
+   * Skips the initial emission (which would diff against an empty baseline).
+   * Returns a disposer.
+   */
+  subscribeToMessages(
+    onChange: (changedSessionIds: Set<string>) => void
+  ): () => void {
+    const watch = this.db
+      .query<{ id: string; session_id: string }>({
+        sql: 'SELECT id, session_id FROM chat_messages WHERE cloud_workspace_id = ?',
+        parameters: [this.cloudWorkspaceId],
+      })
+      .differentialWatch()
+
+    let baselineSeen = false
+    return watch.registerListener({
+      onDiff: (diff) => {
+        if (!baselineSeen) {
+          baselineSeen = true
+          return
+        }
+        const changed = new Set<string>()
+        for (const row of diff.added) changed.add(row.session_id)
+        for (const row of diff.removed) changed.add(row.session_id)
+        for (const upd of diff.updated) {
+          changed.add(upd.current.session_id)
+          if (upd.previous.session_id !== upd.current.session_id) {
+            changed.add(upd.previous.session_id)
+          }
+        }
+        if (changed.size > 0) onChange(changed)
+      },
+      onError: (err) => {
+        // Caller can re-subscribe if needed; storage adapter has no logger.
+        console.error('[CloudSessionStorage] message watch error:', err)
+      },
+    })
+  }
+
   // --- Private helpers ---
 
   private rowToSessionMetadata(row: any): SessionMetadata {
