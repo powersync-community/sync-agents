@@ -795,8 +795,11 @@ export default function App() {
       // Skip when locally streaming: the active stream is authoritative for this client.
       if (event.type === 'messages_synced') {
         const atomSession = store.get(sessionAtomFamily(sessionId))
+        console.log(`[App] messages_synced received for ${sessionId}; isProcessing=${atomSession?.isProcessing}`)
         if (atomSession?.isProcessing) return
-        void refreshSessionFromServer(sessionId)
+        void refreshSessionFromServer(sessionId).then((ok) => {
+          console.log(`[App] refreshSessionFromServer(${sessionId}) -> ${ok}`)
+        })
         return
       }
 

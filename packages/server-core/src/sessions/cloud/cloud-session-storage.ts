@@ -316,11 +316,13 @@ export class CloudSessionStorage {
       })
       .differentialWatch()
 
+    console.log(`[CloudSessionStorage] subscribeToMessages: starting watch for cloud_workspace_id=${this.cloudWorkspaceId}`)
     let baselineSeen = false
     return watch.registerListener({
       onDiff: (diff) => {
         if (!baselineSeen) {
           baselineSeen = true
+          console.log(`[CloudSessionStorage] message watch baseline: ${diff.added.length} rows`)
           return
         }
         const changed = new Set<string>()
@@ -332,6 +334,7 @@ export class CloudSessionStorage {
             changed.add(upd.previous.session_id)
           }
         }
+        console.log(`[CloudSessionStorage] message watch diff: +${diff.added.length} -${diff.removed.length} ~${diff.updated.length}; changed sessions: ${[...changed].join(',') || '(none)'}`)
         if (changed.size > 0) onChange(changed)
       },
       onError: (err) => {

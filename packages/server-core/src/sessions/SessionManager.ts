@@ -1406,8 +1406,12 @@ export class SessionManager implements ISessionManager {
    * cloud storage and notify the renderer so the open chat view refreshes.
    */
   private startCloudMessagesWatcher(workspace: Workspace): void {
-    if (!this.cloudStorage) return
+    if (!this.cloudStorage) {
+      sessionLog.warn(`[PowerSync] startCloudMessagesWatcher: cloudStorage is null for workspace ${workspace.id}`)
+      return
+    }
 
+    sessionLog.info(`[PowerSync] startCloudMessagesWatcher: starting for workspace ${workspace.id}`)
     this.cloudMessagesWatchDispose?.()
     this.cloudMessagesWatchDispose = this.cloudStorage.subscribeToMessages((changedSessionIds) => {
       void this.handleCloudMessagesChanged(workspace, changedSessionIds)
@@ -1415,18 +1419,44 @@ export class SessionManager implements ISessionManager {
   }
 
   private async handleCloudMessagesChanged(workspace: Workspace, sessionIds: Set<string>): Promise<void> {
+    sessionLog.info(`[PowerSync] handleCloudMessagesChanged: ${sessionIds.size} session(s) changed: ${[...sessionIds].join(',')}`)
     for (const sessionId of sessionIds) {
       const managed = this.sessions.get(sessionId)
-      if (!managed) continue
-      if (managed.workspace.id !== workspace.id) continue
-      if (managed.isProcessing) continue  // local stream is authoritative
-      if (!managed.messagesLoaded) continue  // will load fresh on next open
+      if (!managed) {
+        sessionLog.info(`[PowerSync]   skip ${sessionId}: not in this.sessions`)
+        continue
+      }
+      if (managed.workspace.id !== workspace.id) {
+        sessionLog.info(`[PowerSync]   skip ${sessionId}: different workspace (${managed.workspace.id} vs ${workspace.id})`)
+        continue
+      }
+      if (managed.isProcessing) {
+        sessionLog.info(`[PowerSync]   skip ${sessionId}: local stream in progress`)
+        continue
+      }
+      if (!managed.messagesLoaded) {
+        // Race guard: if a lazy-load is in flight, its SELECT may have snapshot
+        // the DB before this watch event's write committed. Re-process after.
+        const inFlight = this.messageLoadingPromises.get(sessionId)
+        if (inFlight) {
+          sessionLog.info(`[PowerSync]   defer ${sessionId}: load in flight, will re-process after`)
+          void inFlight.then(() => this.handleCloudMessagesChanged(workspace, new Set([sessionId])))
+        } else {
+          sessionLog.info(`[PowerSync]   skip ${sessionId}: messages not yet loaded into memory`)
+        }
+        continue
+      }
 
       try {
         const stored = await this.cloudStorage!.loadSession(sessionId)
-        if (!stored) continue
+        if (!stored) {
+          sessionLog.info(`[PowerSync]   skip ${sessionId}: loadSession returned null`)
+          continue
+        }
+        const before = managed.messages.length
         managed.messages = (stored.messages || []).map(storedToMessage)
         managed.messageCount = managed.messages.length
+        sessionLog.info(`[PowerSync]   refreshed ${sessionId}: ${before} -> ${managed.messages.length} messages, emitting messages_synced`)
         // lastMessageAt / lastMessageRole are kept in sync by startCloudSessionWatcher
         // when chat_sessions row updates (saveSession bumps both tables together).
         this.sendEvent({ type: 'messages_synced', sessionId }, workspace.id)

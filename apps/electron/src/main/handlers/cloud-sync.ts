@@ -128,6 +128,19 @@ export function registerCloudSyncHandlers(server: RpcServer, deps: HandlerDeps):
       console.error('[CloudSync] connectPowerSyncForCloudWorkspace: PowerSync connect failed:', err)
       throw err
     }
+
+    // Hydrate cloud session storage for any workspaces already linked from a
+    // previous run. WORKSPACE_LINK_LOCAL handles this path on first link; this
+    // covers app restarts where the workspace is already cloud-linked on disk.
+    for (const ws of workspaces) {
+      if (ws.storageMode === 'cloud' && ws.cloudWorkspaceId) {
+        try {
+          await deps.sessionManager.refreshWorkspaceCloudState(ws.id)
+        } catch (err) {
+          console.error(`[CloudSync] refreshWorkspaceCloudState failed for ${ws.id}:`, err)
+        }
+      }
+    }
   }
 
   // --- Auth handlers ---
